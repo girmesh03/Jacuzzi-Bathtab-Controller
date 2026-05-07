@@ -96,7 +96,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Document temperature history buffer implementation for thermal runaway detection
   - Document any sensor-specific calibration or circuit requirements
 
-- [ ] 10. Phase 2 post-git workflow
+- [x] 10. Phase 2 post-git workflow
   - Execute `git add`, `git commit -m "Phase 2: Sensor integration"`
   - Execute `git push origin feature/phase-2-sensors`
   - Merge feature branch to main
@@ -143,7 +143,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 4
 
 - [ ] 15. Document Phase 3 results
-  - Validate implementation of phase 3 using `phase-3-checklist.md`
   - Create `docs/phase-3-relay-i2c.md` documenting relay channel mapping, shutdown sequence timing, I2C arbitration behavior
   - Document PCF8574 communication verification results
   - Document safe shutdown coordinator ownership and trigger paths
@@ -194,7 +193,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 5
 
 - [ ] 22. Document Phase 4 results
-  - Validate implementation of phase 4 using `phase-4-checklist.md`
   - Create `docs/phase-4-state-machine.md` documenting state definitions, transitions, guard conditions, entry/exit actions
   - Document boot fault persistence behavior observed on hardware
   - Document Shutdown state trigger and exit conditions
@@ -265,7 +263,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 6
 
 - [ ] 30. Document Phase 5 results
-  - Validate implementation of phase 5 using `phase-5-checklist.md`
   - Create `docs/phase-5-safety-system.md` documenting precondition logic, circulation countdown behavior, heater auto-start timing and temperature target policy
   - Document thermal runaway detection thresholds and manual acknowledgment requirement
   - Document fault detection and auto-clear vs manual acknowledgment behavior
@@ -408,7 +405,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 7
 
 - [ ] 44. Document Phase 6 results
-  - Validate implementation of phase 6 using `phase-1-checklist.md`
   - Create `docs/phase-6-ui-display.md` documenting all UI screens, bitmap scaling verification, glyph rendering approach
   - Document screen layout definitions for each UI state
   - Document bitmap memory usage and display refresh rate measurements
@@ -464,7 +460,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 8
 
 - [ ] 51. Document Phase 7 results
-  - Validate implementation of phase 7 using `phase-7-checklist.md`
   - Create `docs/phase-7-ui-input.md` documenting final validated pin mapping for encoder (including A0 validation result)
   - Document debounce and hold-duration constants used
   - Document fault-browsing user flow from actual hardware testing
@@ -507,7 +502,6 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - User must report results and provide explicit approval before proceeding to Phase 9
 
 - [ ] 56. Document Phase 8 results
-  - Validate implementation of phase 8 using `phase-8-checklist.md`
   - Create `docs/phase-8-buzzer.md` documenting alert priorities, buzzer duration constants, boot-safe D8 behavior
   - Document hardware polarity choice (active-high or active-low) if finalized during validation
 
