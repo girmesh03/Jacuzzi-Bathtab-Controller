@@ -8,6 +8,9 @@
 #include "StateDefinitions.h"
 #include "FaultCodes.h"
 
+// Module headers
+#include "SensorManager.h"
+
 // ============================================================================
 // Debug Macros
 // ============================================================================
@@ -26,6 +29,9 @@
 // ============================================================================
 bool oledFound = false;
 bool pcf8574Found = false;
+
+// Module instances
+SensorManager sensorManager;
 
 // ============================================================================
 // Setup Function
@@ -209,17 +215,59 @@ void setup() {
         Serial.println(F("ALL OFF"));
         Serial.println(F(""));
     #endif
+    
+    // ------------------------------------------------------------------------
+    // Sensor Manager Initialization (Phase 2)
+    // ------------------------------------------------------------------------
+    sensorManager.begin();
 }
 
 // ============================================================================
 // Loop Function
 // ============================================================================
 void loop() {
+    // ------------------------------------------------------------------------
+    // Phase 2: Sensor Integration
+    // ------------------------------------------------------------------------
+    
+    // Update sensors (non-blocking)
+    sensorManager.update();
+    
+    // Periodic debug output (every 5 seconds)
+    #ifdef ENABLE_SERIAL_DEBUG
+        static unsigned long lastDebugTime = 0;
+        unsigned long currentTime = millis();
+        
+        if (currentTime - lastDebugTime >= 5000) {
+            Serial.println(F(""));
+            Serial.println(F("--- Sensor Status ---"));
+            
+            // Temperature sensor status
+            Serial.print(F("Temperature: "));
+            if (sensorManager.isTemperatureSensorOperational()) {
+                Serial.print(sensorManager.getTemperature(), 1);
+                Serial.println(F(" °C"));
+            } else {
+                Serial.println(F("SENSOR FAULT"));
+            }
+            
+            // Water level sensor status
+            Serial.print(F("Water Level: "));
+            Serial.println(sensorManager.isWaterLevelSufficient() ? F("Sufficient") : F("Insufficient"));
+            
+            if (sensorManager.hasWaterLevelFault()) {
+                Serial.println(F("  WATER LEVEL FAULT"));
+            }
+            
+            Serial.println(F(""));
+            
+            lastDebugTime = currentTime;
+        }
+    #endif
+    
     // Event loop will be populated in subsequent phases
     // Non-blocking architecture - NO delay() calls
     
-    // Phase 1: Hardware initialization only
-    // Phase 2: Sensor integration
     // Phase 3: Relay control and I2C bus management
     // Phase 4: State machine implementation
     // Phase 5: Safety system

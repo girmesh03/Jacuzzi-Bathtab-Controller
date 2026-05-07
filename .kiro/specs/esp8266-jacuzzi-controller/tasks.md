@@ -41,6 +41,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Configure remaining encoder pins: D6 (GPIO12) CLK
   - Verify I2C devices at addresses 0x3C (OLED) and 0x20 (PCF8574)
   - Implement conditional serial debug output framework using `DENABLE_SERIAL_DEBUG` flag at 115200 baud
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 1.1, 1.2, 1.3, 1.3a, 1.4, 1.5, 1.6, 1.7, 1.8, 1.12, 1.15, 14.8, 14.9, 18.12_
 
 - [x] 3. Manual hardware validation checkpoint
@@ -48,8 +49,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify boot-safe pins (D8 LOW, D3 with pull-up), I2C device detection (0x3C, 0x20), all relays OFF
   - User must report results and provide explicit approval before proceeding to Phase 2
 
-- [x] 4. Validate Implementation and Document Phase 1 results
-  - Validate implementation of phase 1 using `phase-1-checklist.md`
+- [x] 4. Document Phase 1 results
   - Create `docs/phase-1-hardware-initialization.md` documenting pin configuration, I2C setup, boot behavior, and any hardware-specific notes
   - Document board variant selection (esp12e or alternative) if finalized during validation
   - Document any pin mapping caveats or circuit requirements discovered
@@ -63,7 +63,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
 
 ### Phase 2: Sensor Integration
 
-- [-] 6. Implement DS18B20 temperature sensor driver (non-blocking)
+- [x] 6. Implement DS18B20 temperature sensor driver (non-blocking)
   - Create `lib/SensorManager/SensorManager.cpp` and `include/SensorManager.h`
   - Implement non-blocking temperature reading using state machine (IDLE → REQUEST → WAITING → PROCESS)
   - Read temperature every 2 seconds (from TimingConfig.h) using millis()-based timing
@@ -74,24 +74,24 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp` event loop
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.13, 2.14, 13.4_
 
-- [ ] 7. Implement XKC-Y25-V water level sensor driver
+- [x] 7. Implement XKC-Y25-V water level sensor driver
   - Add water level sensor reading to SensorManager
   - Read pin D7 (GPIO13) with active-low logic (LOW = sufficient, HIGH = insufficient)
   - Implement non-blocking polling with read period from TimingConfig.h (e.g., 500ms)
   - Detect insufficient water for extended duration (from TimingConfig.h, e.g., 10 seconds)
   - Implement stabilization period for fault recovery (from TimingConfig.h, e.g., 5 seconds)
   - Integrate with `src/main.cpp` event loop
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 1.5, 3.1, 3.2, 3.3, 3.8, 3.9, 3.10, 13.4_
 
-- [ ] 8. Manual hardware validation checkpoint
+- [x] 8. Manual hardware validation checkpoint
   - User must manually test both sensors on actual hardware
   - Verify temperature readings accuracy (DS18B20), water level detection (XKC-Y25-V active-low logic)
   - Verify sensor fault detection (disconnect sensors, verify fault state entry)
   - Verify sensor-to-fault integration and sensor-to-UI status propagation
   - User must report results and provide explicit approval before proceeding to Phase 3
 
-- [ ] 9. Validate Implementation and Document Phase 2 results
-  - Validate implementation of phase 2 using `phase-2-checklist.md`
+- [x] 9. Document Phase 2 results
   - Create `docs/phase-2-sensor-integration.md` documenting sensor behavior, timing constants, fault thresholds, and validation results
   - Document temperature history buffer implementation for thermal runaway detection
   - Document any sensor-specific calibration or circuit requirements
@@ -132,6 +132,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify all relays end in HIGH (off) state after shutdown
   - Override all user actions during shutdown
   - Integrate with `src/main.cpp`
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 13.6_
 
 - [ ] 14. Manual hardware validation checkpoint
@@ -141,7 +142,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify I2C conflict handling (OLED vs PCF8574), verify safety-critical relay priority over display updates
   - User must report results and provide explicit approval before proceeding to Phase 4
 
-- [ ] 15. Validate Implementation and Document Phase 3 results
+- [ ] 15. Document Phase 3 results
   - Validate implementation of phase 3 using `phase-3-checklist.md`
   - Create `docs/phase-3-relay-i2c.md` documenting relay channel mapping, shutdown sequence timing, I2C arbitration behavior
   - Document PCF8574 communication verification results
@@ -183,6 +184,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Connect state transitions to UI screen changes
   - Ensure each state displays the correct UI mode (Power-Up, Initialization, Ready, Main Menu, Circulation, Fault, Fault_Inspection, etc.)
   - Integrate state transition logging with `DENABLE_SERIAL_DEBUG`
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
 
 - [ ] 21. Manual hardware validation checkpoint
   - User must manually test state machine on actual hardware
@@ -191,7 +193,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify state entry/exit actions, verify Shutdown state behavior
   - User must report results and provide explicit approval before proceeding to Phase 5
 
-- [ ] 22. Validate Implementation and Document Phase 4 results
+- [ ] 22. Document Phase 4 results
   - Validate implementation of phase 4 using `phase-4-checklist.md`
   - Create `docs/phase-4-state-machine.md` documenting state definitions, transitions, guard conditions, entry/exit actions
   - Document boot fault persistence behavior observed on hardware
@@ -251,6 +253,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Enable Fault_Inspection browsing when multiple faults active
   - Implement auto-clear logic: low water level (after stabilization), high temp warning (when temp drops), sensor communication (after valid readings), I2C/PCF8574 (when restored)
   - Implement manual acknowledgment requirement for thermal runaway
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 2.4, 2.7, 2.10, 3.4, 3.5, 3.6, 3.8, 11.1, 11.4, 11.6, 11.7, 11.8, 11.9, 11.14, 11.16, 11.17, 11.18, 19.1, 19.2, 19.3, 19.4, 19.6_
 
 - [ ] 29. Manual hardware validation checkpoint
@@ -261,7 +264,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify fault detection for all fault types, verify multi-fault bit field storage
   - User must report results and provide explicit approval before proceeding to Phase 6
 
-- [ ] 30. Validate Implementation and Document Phase 5 results
+- [ ] 30. Document Phase 5 results
   - Validate implementation of phase 5 using `phase-5-checklist.md`
   - Create `docs/phase-5-safety-system.md` documenting precondition logic, circulation countdown behavior, heater auto-start timing and temperature target policy
   - Document thermal runaway detection thresholds and manual acknowledgment requirement
@@ -390,6 +393,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Each fault: Displays with its specific error bitmap and description (bitmap glyphs)
   - Interaction: Button press returns to Fault UI or Ready UI (if faults cleared)
   - Purpose: Browse and review multiple active faults
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 9.10, 9.11, 11.10, 11.11, 11.13_
 
 - [ ] 43. Manual hardware validation checkpoint
@@ -403,7 +407,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify multi-fault browsing with multiple simultaneous faults
   - User must report results and provide explicit approval before proceeding to Phase 7
 
-- [ ] 44. Validate Implementation and Document Phase 6 results
+- [ ] 44. Document Phase 6 results
   - Validate implementation of phase 6 using `phase-1-checklist.md`
   - Create `docs/phase-6-ui-display.md` documenting all UI screens, bitmap scaling verification, glyph rendering approach
   - Document screen layout definitions for each UI state
@@ -447,6 +451,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Implement multi-fault browsing: WHILE in Fault_Inspection state, rotary left/right scrolls through fault list
   - Connect encoder press behavior to screen flow defined in Phase 6
   - Provide visual feedback for all encoder interactions (feedback timing from TimingConfig.h, e.g., within 100ms)
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 10.8, 10.9, 10.11_
 
 - [ ] 50. Manual hardware validation checkpoint
@@ -458,7 +463,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify context-sensitive actions in all UI states
   - User must report results and provide explicit approval before proceeding to Phase 8
 
-- [ ] 51. Validate Implementation and Document Phase 7 results
+- [ ] 51. Document Phase 7 results
   - Validate implementation of phase 7 using `phase-7-checklist.md`
   - Create `docs/phase-7-ui-input.md` documenting final validated pin mapping for encoder (including A0 validation result)
   - Document debounce and hold-duration constants used
@@ -490,6 +495,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Implement buzzer activation for safe shutdown (alert duration, duration from TimingConfig.h)
   - Implement overlap prevention: manage alert requests to prevent buzzer overlap
   - Implement priority handling: fault alerts prioritized over confirmation beeps
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 20.4, 20.5, 20.6, 20.7, 20.8, 20.9, 20.10, 20.11_
 
 - [ ] 55. Manual hardware validation checkpoint
@@ -500,7 +506,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify no buzzer overlap issues, verify priority handling (fault alerts over confirmation beeps)
   - User must report results and provide explicit approval before proceeding to Phase 9
 
-- [ ] 56. Validate Implementation and Document Phase 8 results
+- [ ] 56. Document Phase 8 results
   - Validate implementation of phase 8 using `phase-8-checklist.md`
   - Create `docs/phase-8-buzzer.md` documenting alert priorities, buzzer duration constants, boot-safe D8 behavior
   - Document hardware polarity choice (active-high or active-low) if finalized during validation
@@ -547,6 +553,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Deactivate all features when circulation deactivated
   - Transition to Feature_Enabled_Bath state when features activated beyond circulation
   - Display feature status using corresponding bitmaps: massage_bitmap, jet_bitmap, ozone_bitmap, speaker_bitmap, light_bulb_bitmap
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10_
 
 - [ ] 61. Manual hardware validation checkpoint
@@ -558,7 +565,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify all features deactivate when circulation stops, verify return to Main Menu
   - User must report results and provide explicit approval before proceeding to Phase 10
 
-- [ ] 62. Validate Implementation and Document Phase 9 results
+- [ ] 62. Document Phase 9 results
   - Validate implementation of phase 9 using `phase-9-checklist.md`
   - Create `docs/phase-9-feature-control.md` documenting circulation countdown/start behavior, heater auto-start timing, feature on/off sequencing
   - Document return-to-main-menu behavior when circulation stopped
@@ -601,6 +608,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Document known limitations and future enhancements
   - Create user operation guide with bitmap-only UI navigation (screen-by-screen flow)
   - Include screenshots or photos of all UI screens from actual hardware
+  - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 16.7_
 
 - [ ] 66. Final manual hardware validation checkpoint
