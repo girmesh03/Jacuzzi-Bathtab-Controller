@@ -105,7 +105,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
 
 ### Phase 3: Relay Control and I2C Bus Management
 
-- [ ] 11. Implement I2C bus manager with locking mechanism
+- [x] 11. Implement I2C bus manager with locking mechanism
   - Create `lib/I2CBusManager/I2CBusManager.cpp` and `include/I2CBusManager.h`
   - Implement lock/release mechanism for I2C bus access
   - Implement transaction timeout handling (timeout from TimingConfig.h, e.g., 1000ms)
@@ -114,7 +114,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp`
   - _Requirements: 1.1, 1.8, 4.12, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 13.5_
 
-- [ ] 12. Implement PCF8574 relay controller with active-low logic
+- [x] 12. Implement PCF8574 relay controller with active-low logic
   - Create `lib/RelayController/RelayController.cpp` and `include/RelayController.h`
   - Implement 8-channel relay mapping: Channel 0 (Circulation), 1 (Massage), 2 (Jet), 3 (Heater 3kW/5V/30A), 4 (Ozone), 5 (Speaker), 6 (Lights), 7 (Spare - permanently OFF)
   - Implement active-low logic: HIGH = OFF, LOW = ON (bit manipulation for relay state)
@@ -125,7 +125,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp` event loop
   - _Requirements: 1.3, 1.3a, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.13, 4.14, 4.15, 13.6_
 
-- [ ] 13. Implement safe shutdown sequence
+- [x] 13. Implement safe shutdown sequence
   - Add safe shutdown coordinator to RelayController or SafetySystem
   - Implement priority order: Heater OFF (immediate), Ozone OFF (delay), Jet OFF (delay), Massage OFF (delay), Speaker/Lights OFF (delay), Circulation OFF (last, delay)
   - Use non-blocking timing with delays from TimingConfig.h (e.g., 100ms, 200ms)
@@ -135,19 +135,19 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 13.6_
 
-- [ ] 14. Manual hardware validation checkpoint
+- [x] 14. Manual hardware validation checkpoint
   - User must manually test relay control and I2C bus management on actual hardware
   - Verify all 8 relay channels (active-low logic: HIGH=off, LOW=on), spare channel remains OFF
   - Verify safe shutdown sequence (heater first, circulation last), measure timing
   - Verify I2C conflict handling (OLED vs PCF8574), verify safety-critical relay priority over display updates
   - User must report results and provide explicit approval before proceeding to Phase 4
 
-- [ ] 15. Document Phase 3 results
+- [x] 15. Document Phase 3 results
   - Create `docs/phase-3-relay-i2c.md` documenting relay channel mapping, shutdown sequence timing, I2C arbitration behavior
   - Document PCF8574 communication verification results
   - Document safe shutdown coordinator ownership and trigger paths
 
-- [ ] 16. Phase 3 post-git workflow
+- [-] 16. Phase 3 post-git workflow
   - Execute `git add`, `git commit -m "Phase 3: Relay control and I2C bus management"`
   - Execute `git push origin feature/phase-3-relay-i2c`
   - Merge feature branch to main

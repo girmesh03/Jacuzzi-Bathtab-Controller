@@ -9,6 +9,8 @@
 #include "FaultCodes.h"
 
 // Module headers
+#include "I2CBusManager.h"
+#include "RelayController.h"
 #include "SensorManager.h"
 
 // ============================================================================
@@ -31,6 +33,8 @@ bool oledFound = false;
 bool pcf8574Found = false;
 
 // Module instances
+I2CBusManager i2cBus;
+RelayController relayController(i2cBus);
 SensorManager sensorManager;
 
 // ============================================================================
@@ -220,6 +224,16 @@ void setup() {
     // Sensor Manager Initialization (Phase 2)
     // ------------------------------------------------------------------------
     sensorManager.begin();
+    
+    // ------------------------------------------------------------------------
+    // I2C Bus Manager Initialization (Phase 3)
+    // ------------------------------------------------------------------------
+    i2cBus.begin();
+    
+    // ------------------------------------------------------------------------
+    // Relay Controller Initialization (Phase 3)
+    // ------------------------------------------------------------------------
+    relayController.begin();
 }
 
 // ============================================================================
@@ -232,6 +246,42 @@ void loop() {
     
     // Update sensors (non-blocking)
     sensorManager.update();
+    
+    // ------------------------------------------------------------------------
+    // Phase 3: Relay Control and I2C Bus Management
+    // ------------------------------------------------------------------------
+    
+    // Update relay controller (non-blocking)
+    relayController.update();
+    
+    // Test safe shutdown sequence (for Phase 3 validation)
+    // This will be removed in later phases when integrated with state machine
+    #ifdef ENABLE_SERIAL_DEBUG
+        static bool shutdownTested = false;
+        static unsigned long testStartTime = millis();
+        
+        // Wait 10 seconds after boot, then test shutdown once
+        if (!shutdownTested && (millis() - testStartTime >= 10000)) {
+            Serial.println(F(""));
+            Serial.println(F("=== TESTING SAFE SHUTDOWN SEQUENCE ==="));
+            
+            // Turn on some relays first
+            Serial.println(F("[TEST] Activating relays for shutdown test..."));
+            relayController.setRelay(RELAY_CHANNEL_CIRCULATION, true);
+            relayController.setRelay(RELAY_CHANNEL_HEATER, true);
+            relayController.setRelay(RELAY_CHANNEL_MASSAGE, true);
+            relayController.setRelay(RELAY_CHANNEL_JET, true);
+            relayController.setRelay(RELAY_CHANNEL_OZONE, true);
+            relayController.setRelay(RELAY_CHANNEL_SPEAKER, true);
+            relayController.setRelay(RELAY_CHANNEL_LIGHTS, true);
+            
+            delay(1000);  // Brief delay to see relays activate
+            
+            // Start safe shutdown
+            relayController.startSafeShutdown();
+            shutdownTested = true;
+        }
+    #endif
     
     // Periodic debug output (every 5 seconds)
     #ifdef ENABLE_SERIAL_DEBUG
