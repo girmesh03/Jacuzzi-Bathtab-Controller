@@ -12,6 +12,7 @@
 #include "I2CBusManager.h"
 #include "RelayController.h"
 #include "SensorManager.h"
+#include "StateMachine.h"
 
 // ============================================================================
 // Debug Macros
@@ -36,6 +37,7 @@ bool pcf8574Found = false;
 I2CBusManager i2cBus;
 RelayController relayController(i2cBus);
 SensorManager sensorManager;
+StateMachine stateMachine(sensorManager, relayController, i2cBus);
 
 // ============================================================================
 // Setup Function
@@ -234,6 +236,11 @@ void setup() {
     // Relay Controller Initialization (Phase 3)
     // ------------------------------------------------------------------------
     relayController.begin();
+    
+    // ------------------------------------------------------------------------
+    // State Machine Initialization (Phase 4)
+    // ------------------------------------------------------------------------
+    stateMachine.begin();
 }
 
 // ============================================================================
@@ -253,6 +260,13 @@ void loop() {
     
     // Update relay controller (non-blocking)
     relayController.update();
+    
+    // ------------------------------------------------------------------------
+    // Phase 4: State Machine
+    // ------------------------------------------------------------------------
+    
+    // Update state machine (non-blocking)
+    stateMachine.update();
     
     // Test safe shutdown sequence (for Phase 3 validation)
     // This will be removed in later phases when integrated with state machine
@@ -290,7 +304,20 @@ void loop() {
         
         if (currentTime - lastDebugTime >= 5000) {
             Serial.println(F(""));
-            Serial.println(F("--- Sensor Status ---"));
+            Serial.println(F("--- System Status ---"));
+            
+            // State machine status
+            Serial.print(F("Current State: "));
+            Serial.println(stateMachine.getStateName(stateMachine.getCurrentState()));
+            
+            // Fault status
+            if (stateMachine.getActiveFaults() != FAULT_NONE) {
+                Serial.print(F("Active Faults: 0x"));
+                Serial.print(stateMachine.getActiveFaults(), HEX);
+                Serial.print(F(" ("));
+                Serial.print(stateMachine.getFaultCount());
+                Serial.println(F(" fault(s))"));
+            }
             
             // Temperature sensor status
             Serial.print(F("Temperature: "));

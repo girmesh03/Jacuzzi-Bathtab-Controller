@@ -442,7 +442,8 @@ bool RelayController::readRelayState() {
     }
     
     // Request 1 byte from PCF8574
-    uint8_t bytesRead = Wire.requestFrom(I2C_ADDRESS_PCF8574, (uint8_t)1);
+    // Use explicit uint8_t for both parameters to avoid ambiguity
+    uint8_t bytesRead = Wire.requestFrom((uint8_t)I2C_ADDRESS_PCF8574, (uint8_t)1);
     
     if (bytesRead == 1) {
         relayState = Wire.read();

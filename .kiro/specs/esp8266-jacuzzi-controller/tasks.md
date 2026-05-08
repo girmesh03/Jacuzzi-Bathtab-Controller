@@ -156,7 +156,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
 
 ### Phase 4: State Machine Implementation
 
-- [~] 17. Implement state machine with all 9 states
+- [x] 17. Implement state machine with all 9 states
   - Create `lib/StateMachine/StateMachine.cpp` and `include/StateMachine.h`
   - Define states: Boot, Self_Check, Ready, Active_Circulation, Feature_Enabled_Bath, Warning, Fault, Fault_Inspection, Shutdown
   - Implement state transition logic with guard conditions
@@ -165,7 +165,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp` event loop
   - _Requirements: 8.1, 8.2, 8.13, 8.14, 13.1_
 
-- [ ] 18. Implement boot fault persistence logic
+- [x] 18. Implement boot fault persistence logic
   - In Self_Check state, verify ALL preconditions: water level sufficient, temperature sensor operational, temperature within safe range, I2C devices responding, all relays OFF
   - IF ANY precondition fails, transition to Fault state and persist until ALL conditions resolved
   - System does NOT progress to Ready state until ALL preconditions AND safety conditions satisfied
@@ -173,26 +173,26 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Add state transition logging when `DENABLE_SERIAL_DEBUG` defined
   - _Requirements: 1.9, 1.10, 8.3, 8.4, 8.5, 8.6, 8.7, 8.15, 11.2, 11.3, 11.5_
 
-- [ ] 19. Implement operational state transitions
+- [x] 19. Implement operational state transitions
   - Implement transitions: Ready → Active_Circulation (user activates circulation), Active_Circulation → Feature_Enabled_Bath (user activates features), Feature_Enabled_Bath → Warning (non-critical warning), Any state → Fault (safety condition fails)
   - Implement Fault → Fault_Inspection (user requests fault review with multiple faults), Fault_Inspection → Fault (user exits inspection)
   - Implement guard conditions for all transitions (e.g., Ready → Active_Circulation requires water level sufficient AND temp sensor operational AND no faults)
   - _Requirements: 8.8, 8.9, 8.10, 8.11, 8.12, 8.13_
 
-- [ ] 20. Implement state-driven UI updates
+- [x] 20. Implement state-driven UI updates
   - Connect state transitions to UI screen changes
   - Ensure each state displays the correct UI mode (Power-Up, Initialization, Ready, Main Menu, Circulation, Fault, Fault_Inspection, etc.)
   - Integrate state transition logging with `DENABLE_SERIAL_DEBUG`
   - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
 
-- [ ] 21. Manual hardware validation checkpoint
+- [x] 21. Manual hardware validation checkpoint
   - User must manually test state machine on actual hardware
   - Verify all 9 state transitions with guard conditions
   - Verify boot fault persistence (system stays in Fault until ALL conditions resolved)
   - Verify state entry/exit actions, verify Shutdown state behavior
   - User must report results and provide explicit approval before proceeding to Phase 5
 
-- [ ] 22. Document Phase 4 results
+- [x] 22. Document Phase 4 results
   - Create `docs/phase-4-state-machine.md` documenting state definitions, transitions, guard conditions, entry/exit actions
   - Document boot fault persistence behavior observed on hardware
   - Document Shutdown state trigger and exit conditions
