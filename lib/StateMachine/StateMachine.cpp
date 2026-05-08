@@ -48,26 +48,36 @@ void StateMachine::begin() {
 void StateMachine::update() {
     // State-specific update logic
     switch (currentState) {
-        case STATE_BOOT:
+        case STATE_BOOT: {
             // Check if hardware initialization is complete
             // In real implementation, this would check actual hardware init status
             // For now, we assume hardware init completes immediately
             if (!hardwareInitComplete) {
                 hardwareInitComplete = true;
-                // Transition to Self_Check
-                if (guardBootToSelfCheck()) {
-                    executeTransition(STATE_SELF_CHECK);
-                }
+            }
+            
+            // CRITICAL: Boot state must last at least 3 seconds for Power-Up UI display
+            // Requirement 9.16: Power-Up UI visible for at least 3 seconds
+            unsigned long bootDuration = millis() - stateEntryTime;
+            if (bootDuration >= BOOT_STATE_MINIMUM_DURATION_MS && guardBootToSelfCheck()) {
+                executeTransition(STATE_SELF_CHECK);
             }
             break;
+        }
             
-        case STATE_SELF_CHECK:
+        case STATE_SELF_CHECK: {
             // Perform self-check
             if (!selfCheckComplete) {
                 performSelfCheck();
                 selfCheckComplete = true;
-                
-                // Transition based on self-check results
+            }
+            
+            // CRITICAL: Self-check state must last at least 2 seconds for Initialization UI visibility
+            // This allows users to see the initialization progress screen
+            unsigned long selfCheckDuration = millis() - stateEntryTime;
+            
+            if (selfCheckDuration >= SELF_CHECK_MINIMUM_DURATION_MS) {
+                // Minimum duration elapsed - now transition based on results
                 if (activeFaults != FAULT_NONE) {
                     // Faults detected - enter Fault state
                     executeTransition(STATE_FAULT);
@@ -77,6 +87,7 @@ void StateMachine::update() {
                 }
             }
             break;
+        }
             
         case STATE_READY:
             // Monitor for faults
@@ -119,8 +130,11 @@ void StateMachine::update() {
                 clearFault(FAULT_TEMPERATURE_SENSOR);
             }
             
-            // Water level fault auto-clears when water level becomes sufficient
-            if (hasFault(FAULT_LOW_WATER_LEVEL) && !sensorManager.hasWaterLevelFault()) {
+            // Water level fault auto-clears when water level becomes sufficient AND fault flag clears
+            // CRITICAL: Check both actual water level AND fault flag to ensure stabilization
+            if (hasFault(FAULT_LOW_WATER_LEVEL) && 
+                sensorManager.isWaterLevelSufficient() && 
+                !sensorManager.hasWaterLevelFault()) {
                 clearFault(FAULT_LOW_WATER_LEVEL);
             }
             
@@ -222,7 +236,13 @@ void StateMachine::setFault(FaultCode fault) {
     #endif
     
     // If this is the first fault, trigger transition to Fault state
-    if (wasNoFault && currentState != STATE_FAULT && currentState != STATE_FAULT_INSPECTION) {
+    // EXCEPTION: Do NOT auto-transition during Self_Check or Boot states
+    // These states manage their own transitions with minimum duration requirements
+    if (wasNoFault && 
+        currentState != STATE_FAULT && 
+        currentState != STATE_FAULT_INSPECTION &&
+        currentState != STATE_SELF_CHECK &&
+        currentState != STATE_BOOT) {
         executeTransition(STATE_FAULT);
     }
 }

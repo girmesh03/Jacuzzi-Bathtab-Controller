@@ -26,6 +26,13 @@
 #define DISPLAY_UPDATE_INTERVAL_MS 100  // Display refresh rate (100ms = 10Hz maximum)
 
 // ----------------------------------------------------------------------------
+// State Machine Timing
+// ----------------------------------------------------------------------------
+
+#define BOOT_STATE_MINIMUM_DURATION_MS 3000       // Boot state minimum duration (3 seconds for Power-Up UI display)
+#define SELF_CHECK_MINIMUM_DURATION_MS 2000       // Self-check minimum duration (2 seconds for Initialization UI visibility)
+
+// ----------------------------------------------------------------------------
 // Input Timing
 // ----------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@
 #include "SensorManager.h"
 #include "StateMachine.h"
 #include "SafetySystem.h"
+#include "UIManager.h"
 
 // ============================================================================
 // Debug Macros
@@ -40,6 +41,7 @@ RelayController relayController(i2cBus);
 SensorManager sensorManager;
 StateMachine stateMachine(sensorManager, relayController, i2cBus);
 SafetySystem safetySystem(sensorManager, relayController, stateMachine);
+UIManager uiManager(sensorManager);
 
 // ============================================================================
 // Setup Function
@@ -248,6 +250,11 @@ void setup() {
     // Safety System Initialization (Phase 5)
     // ------------------------------------------------------------------------
     safetySystem.begin();
+    
+    // ------------------------------------------------------------------------
+    // UI Manager Initialization (Phase 6)
+    // ------------------------------------------------------------------------
+    uiManager.begin();
 }
 
 // ============================================================================
@@ -281,6 +288,13 @@ void loop() {
     
     // Update safety system (non-blocking)
     safetySystem.update();
+    
+    // ------------------------------------------------------------------------
+    // Phase 6: User Interface - Display
+    // ------------------------------------------------------------------------
+    
+    // Update UI manager (non-blocking)
+    uiManager.update(stateMachine.getCurrentState());
     
     // Phase 5 Integration Tests
     // These tests demonstrate Phase 5 functionality and will be removed in Phase 6

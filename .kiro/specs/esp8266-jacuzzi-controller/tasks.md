@@ -276,7 +276,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
 
 ### Phase 6: User Interface - Display
 
-- [ ] 32. Create bitmap definitions with exact names and scale-by-2 rule
+- [x] 32. Create bitmap definitions with exact names and scale-by-2 rule
   - Create `include/Bitmaps.h` with all bitmap data in PROGMEM
   - Define 13 bitmaps with exact names ending in `_bitmap` suffix: water_drop_bitmap, circulation_bitmap, massage_bitmap, jet_bitmap, heater_bitmap, speaker_bitmap, ozone_bitmap, light_bulb_bitmap, settings_bitmap, thermometer_bitmap, low_water_level_error_bitmap, high_temperature_error_bitmap, sensor_error_bitmap
   - Design all bitmaps at 2x resolution for scale-by-2 display rule
@@ -285,7 +285,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - **CRITICAL**: Every visible word, digit, degree symbol, label, and fault caption MUST be rendered as bitmap glyphs - NO native text rendering functions allowed
   - _Requirements: 9.1, 9.4, 9.14, 14.1_
 
-- [ ] 33. Implement bitmap rendering engine with scale-by-2 rule
+- [x] 33. Implement bitmap rendering engine with scale-by-2 rule
   - Create `lib/UIManager/UIManager.cpp` and `include/UIManager.h`
   - Implement bitmap scaling function: scale down by factor of 2, sample every other pixel from source
   - Implement bitmap-glyph text rendering: lookup glyphs from PROGMEM table, render using scaled bitmaps, NO native font functions (e.g., NO display.print(), NO display.drawChar())
@@ -294,7 +294,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp`
   - _Requirements: 9.2, 9.3, 9.5, 9.6, 9.12, 13.9_
 
-- [ ] 34. Implement Power-Up UI screen
+- [x] 34. Implement Power-Up UI screen
   - Display water_drop_bitmap scaled down by factor of 2
   - Position: horizontally centered, top offset y = -10
   - Duration: visible for at least 3 seconds
@@ -302,7 +302,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Purpose: Boot splash screen during hardware initialization
   - _Requirements: 9.7_
 
-- [ ] 35. Implement Initialization/Safety UI screen
+- [x] 35. Implement Initialization/Safety UI screen
   - Display settings_bitmap scaled down by factor of 2
   - Position: horizontally centered, top offset y = -10
   - Display bitmap-glyph text for each initialization and safety check:
@@ -315,7 +315,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Transition: To Ready UI when all checks pass, to Fault UI if any check fails
   - _Requirements: 9.7_
 
-- [ ] 36. Implement Ready UI screen
+- [x] 36. Implement Ready UI screen
   - Layout: Two-column
     - Left column: thermometer_bitmap scaled to fit
     - Right column: Numeric temperature with degree symbol (rendered as bitmap glyphs, e.g., "38°C")
@@ -323,7 +323,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Interaction: Encoder button press transitions to Main Menu UI
   - _Requirements: 9.7, 9.8_
 
-- [ ] 37. Implement Main Menu UI screen
+- [x] 37. Implement Main Menu UI screen
   - Display: One item visible at a time
     - circulation_bitmap with bottom-centered label "Start" (bitmap glyphs)
     - settings_bitmap with bottom-centered label "Settings" (bitmap glyphs)
