@@ -363,6 +363,49 @@ bool SensorManager::hasTemperatureSensorFault()
     return (tempErrorCount >= SENSOR_ERROR_THRESHOLD);
 }
 
+uint8_t SensorManager::getTemperatureHistoryCount() const
+{
+    return historyCount;
+}
+
+float SensorManager::getTemperatureHistoryValue(uint8_t index) const
+{
+    if (index >= historyCount)
+    {
+        return -999.0f;  // Invalid index
+    }
+    return temperatureHistory[index];
+}
+
+float SensorManager::getOldestTemperature() const
+{
+    if (historyCount == 0)
+    {
+        return -999.0f;  // No history
+    }
+    
+    // If buffer not full, oldest is at index 0
+    if (historyCount < TEMP_HISTORY_SIZE)
+    {
+        return temperatureHistory[0];
+    }
+    
+    // If buffer full, oldest is at current write index (circular buffer)
+    return temperatureHistory[historyIndex];
+}
+
+float SensorManager::getNewestTemperature() const
+{
+    if (historyCount == 0)
+    {
+        return -999.0f;  // No history
+    }
+    
+    // Newest is always at (historyIndex - 1) wrapped around
+    uint8_t newestIndex = (historyIndex == 0) ? (TEMP_HISTORY_SIZE - 1) : (historyIndex - 1);
+    return temperatureHistory[newestIndex];
+}
+
 bool SensorManager::isWaterLevelSufficient()
 {
     return waterLevelSufficient;

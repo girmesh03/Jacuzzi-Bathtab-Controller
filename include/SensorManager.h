@@ -53,6 +53,12 @@ public:
     uint8_t getTemperatureSensorErrorCount();    // Consecutive error count
     bool hasTemperatureSensorFault();            // Fault status
     
+    // Temperature history access (for thermal runaway detection)
+    uint8_t getTemperatureHistoryCount() const;  // Number of readings in history
+    float getTemperatureHistoryValue(uint8_t index) const;  // Get history value by index
+    float getOldestTemperature() const;          // Get oldest temperature in history
+    float getNewestTemperature() const;          // Get newest temperature in history
+    
     // Water level sensor getters
     bool isWaterLevelSufficient();               // Current water level status
     bool hasWaterLevelFault();                   // Water level fault status

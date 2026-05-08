@@ -206,7 +206,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
 
 ### Phase 5: Safety System
 
-- [ ] 24. Implement precondition checking for circulation pump
+- [x] 24. Implement precondition checking for circulation pump
   - Create `lib/SafetySystem/SafetySystem.cpp` and `include/SafetySystem.h`
   - Implement circulation pump precondition check: water level sufficient AND temperature sensor operational AND no active faults
   - Deny activation if ANY precondition fails, display error indication
@@ -216,7 +216,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Integrate with `src/main.cpp`
   - _Requirements: 5.1, 5.2, 5.3, 5.9, 5.11_
 
-- [ ] 25. Implement precondition checking for water heater with absolute circulation dependency
+- [x] 25. Implement precondition checking for water heater with absolute circulation dependency
   - Implement heater precondition check: Circulation pump MUST be actively running (ABSOLUTE RULE) AND water level sufficient AND temperature below warning threshold AND no active faults
   - Deny activation if circulation not active, display error message
   - Deny activation if ANY precondition fails
@@ -227,14 +227,14 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Deactivate heater automatically when current temperature reaches or exceeds target temperature (default or user-set)
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.8_
 
-- [ ] 26. Implement feature sequencing and dependent load control
+- [x] 26. Implement feature sequencing and dependent load control
   - Implement precondition checks for massage, jet, ozone, speaker, lights: Circulation pump MUST be active before allowing activation
   - INHIBIT all features until circulation active
   - Deny feature activation if circulation not active, display error message
   - Deactivate all dependent features when circulation deactivated
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.11_
 
-- [ ] 27. Implement thermal runaway detection algorithm
+- [x] 27. Implement thermal runaway detection algorithm
   - Maintain temperature history buffer (size from SafetyConfig.h)
   - Calculate temperature delta over time window
   - Calculate rate of change (°C/second)
@@ -244,7 +244,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Distinguish thermal runaway (manual ack required) from high temperature warning (auto-clear)
   - _Requirements: 2.8, 2.9, 2.11, 6.6, 11.17, 19.5, 19.7_
 
-- [ ] 28. Implement fault detection for all fault types
+- [x] 28. Implement fault detection for all fault types
   - Implement fault bit field storage for multiple simultaneous faults
   - Implement fault detection: low water level (extended duration), high temperature warning (enters Warning state), critical overtemperature (enters Fault state), thermal runaway (manual ack), temperature sensor failure (consecutive errors), I2C communication failure, PCF8574 failure
   - On fault detection: enter Fault state, execute safe shutdown, store fault in bit field, display fault with specific error bitmap
@@ -254,7 +254,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Create and validate the implementation by following the existing implementation checklist `.kiro/steering/phase-<N>-checklist`
   - _Requirements: 2.4, 2.7, 2.10, 3.4, 3.5, 3.6, 3.8, 11.1, 11.4, 11.6, 11.7, 11.8, 11.9, 11.14, 11.16, 11.17, 11.18, 19.1, 19.2, 19.3, 19.4, 19.6_
 
-- [ ] 29. Manual hardware validation checkpoint
+- [x] 29. Manual hardware validation checkpoint
   - User must manually test safety system on actual hardware
   - Verify circulation preconditions, verify heater absolute circulation dependency (ABSOLUTE RULE)
   - Verify feature inhibition until circulation active
@@ -262,12 +262,12 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Verify fault detection for all fault types, verify multi-fault bit field storage
   - User must report results and provide explicit approval before proceeding to Phase 6
 
-- [ ] 30. Document Phase 5 results
+- [x] 30. Document Phase 5 results
   - Create `docs/phase-5-safety-system.md` documenting precondition logic, circulation countdown behavior, heater auto-start timing and temperature target policy
   - Document thermal runaway detection thresholds and manual acknowledgment requirement
   - Document fault detection and auto-clear vs manual acknowledgment behavior
 
-- [ ] 31. Phase 5 post-git workflow
+- [-] 31. Phase 5 post-git workflow
   - Execute `git add`, `git commit -m "Phase 5: Safety system"`
   - Execute `git push origin feature/phase-5-safety`
   - Merge feature branch to main
