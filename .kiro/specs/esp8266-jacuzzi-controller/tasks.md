@@ -336,7 +336,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Purpose: Top-level menu navigation
   - _Requirements: 9.7, 9.8_
 
-- [ ] 38. Implement Circulation UI screen
+- [x] 38. Implement Circulation UI screen
   - Display: One item visible at a time, scrollable list:
     1. circulation_bitmap - Circulation pump control
     2. massage_bitmap - Massage pump control

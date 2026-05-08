@@ -25,7 +25,8 @@ UIManager::UIManager(SensorManager& sensors)
       uiStateEntryTime(0),
       needsRedraw(true),
       lastUpdateTime(0),
-      mainMenuSelectedIndex(0) {  // Default to Circulation (index 0)
+      mainMenuSelectedIndex(0),  // Default to Circulation (index 0)
+      circulationMenuSelectedIndex(0) {  // Default to Circulation pump (index 0)
 }
 
 // ----------------------------------------------------------------------------
@@ -183,6 +184,7 @@ void UIManager::renderCurrentScreen() {
             
         case UI_CIRCULATION:
             // Task 38 - Circulation UI
+            renderCirculationScreen();
             break;
             
         case UI_SETTINGS_AND_ERROR:
@@ -461,6 +463,153 @@ void UIManager::renderMainMenuScreen() {
     
     // Draw label text at NORMAL SIZE (8x8) using unscaled method
     drawTextUnscaled(menuLabel, labelX, labelY);
+}
+
+// ----------------------------------------------------------------------------
+// Task 38: Circulation UI Screen
+// ----------------------------------------------------------------------------
+
+void UIManager::renderCirculationScreen() {
+    // Requirement 9.7, 9.8: Circulation UI
+    // - One item visible at a time, scrollable list
+    // - Items: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+    // - All bitmaps scaled down by factor of 2
+    // - Rotary left/right scrolls through items (Phase 7 - Input)
+    // - Button press toggles selected item on/off (Phase 9 - Feature Control)
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        static bool firstRender = true;
+        static uint8_t lastSelectedIndex = 255;
+        if (firstRender || circulationMenuSelectedIndex != lastSelectedIndex) {
+            DEBUG_PRINT(F("[UI] Rendering Circulation screen, item: "));
+            DEBUG_PRINTLN(circulationMenuSelectedIndex);
+            firstRender = false;
+            lastSelectedIndex = circulationMenuSelectedIndex;
+        }
+    #endif
+    
+    // Define menu items (8 total)
+    // Index 0: Circulation pump
+    // Index 1: Massage pump
+    // Index 2: Jet pump
+    // Index 3: Water heater
+    // Index 4: Ozone generator
+    // Index 5: Light system
+    // Index 6: Speaker relay
+    // Index 7: Temperature display
+    
+    const unsigned char* itemBitmap;
+    const char* itemLabel;
+    int16_t sourceWidth;
+    int16_t sourceHeight;
+    
+    switch (circulationMenuSelectedIndex) {
+        case 0:
+            // Circulation pump
+            itemBitmap = circulation_bitmap;
+            itemLabel = "Circulation";
+            sourceWidth = CIRCULATION_BMPWIDTH;
+            sourceHeight = CIRCULATION_BMPHEIGHT;
+            break;
+            
+        case 1:
+            // Massage pump
+            itemBitmap = massage_bitmap;
+            itemLabel = "Massage";
+            sourceWidth = MASSAGE_BMPWIDTH;
+            sourceHeight = MASSAGE_BMPHEIGHT;
+            break;
+            
+        case 2:
+            // Jet pump
+            itemBitmap = jet_bitmap;
+            itemLabel = "Jet";
+            sourceWidth = JET_BMPWIDTH;
+            sourceHeight = JET_BMPHEIGHT;
+            break;
+            
+        case 3:
+            // Water heater
+            itemBitmap = heater_bitmap;
+            itemLabel = "Heater";
+            sourceWidth = HEATER_BMPWIDTH;
+            sourceHeight = HEATER_BMPHEIGHT;
+            break;
+            
+        case 4:
+            // Ozone generator
+            itemBitmap = ozone_bitmap;
+            itemLabel = "Ozone";
+            sourceWidth = OZONE_BMPWIDTH;
+            sourceHeight = OZONE_BMPHEIGHT;
+            break;
+            
+        case 5:
+            // Light system
+            itemBitmap = light_bulb_bitmap;
+            itemLabel = "Lights";
+            sourceWidth = LIGHT_BULB_BMPWIDTH;
+            sourceHeight = LIGHT_BULB_BMPHEIGHT;
+            break;
+            
+        case 6:
+            // Speaker relay
+            itemBitmap = speaker_bitmap;
+            itemLabel = "Speaker";
+            sourceWidth = SPEAKER_BMPWIDTH;
+            sourceHeight = SPEAKER_BMPHEIGHT;
+            break;
+            
+        case 7:
+            // Temperature display
+            itemBitmap = thermometer_bitmap;
+            itemLabel = "Temperature";
+            sourceWidth = THERMOMETER_BMPWIDTH;
+            sourceHeight = THERMOMETER_BMPHEIGHT;
+            break;
+            
+        default:
+            // Should never happen, default to circulation
+            itemBitmap = circulation_bitmap;
+            itemLabel = "Circulation";
+            sourceWidth = CIRCULATION_BMPWIDTH;
+            sourceHeight = CIRCULATION_BMPHEIGHT;
+            break;
+    }
+    
+    // Scale down bitmap by factor of 2
+    int16_t scaledWidth = sourceWidth / 2;   // 64 pixels
+    // Note: scaledHeight = sourceHeight / 2 = 32 pixels (calculated in drawScaledBitmap)
+    
+    // Position bitmap
+    // Horizontally centered: (128 - 64) / 2 = 32
+    int16_t bitmapX = (128 - scaledWidth) / 2;  // 32
+    
+    // Vertically positioned with space at bottom for label
+    // Top offset: 8 pixels from top
+    int16_t bitmapY = 8;
+    
+    // Draw item bitmap scaled down by factor of 2
+    drawScaledBitmap(itemBitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
+    
+    // Display label at bottom center (bitmap glyphs at normal size 8x8)
+    // Calculate label width for centering
+    // At normal size: each char is 8 pixels wide + 2 pixels spacing = 10 pixels per char
+    int16_t labelWidth = strlen(itemLabel) * 10;
+    
+    // Position label at bottom center
+    // Label X: (128 - labelWidth) / 2 (centered)
+    int16_t labelX = (128 - labelWidth) / 2;
+    
+    // Label Y: 64 - 8 - 4 = 52 (4 pixels from bottom)
+    int16_t labelY = 64 - 8 - 4;  // 52
+    
+    // Draw label text at NORMAL SIZE (8x8) using unscaled method
+    drawTextUnscaled(itemLabel, labelX, labelY);
+    
+    // TODO (Phase 9): Display on/off status indicator for each feature
+    // TODO (Phase 9): Display countdown for circulation delayed start
+    // TODO (Phase 9): Display temperature value when thermometer selected
 }
 
 // ----------------------------------------------------------------------------

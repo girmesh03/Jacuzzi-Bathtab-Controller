@@ -110,6 +110,38 @@ public:
     }
     
     /**
+     * @brief Get current circulation menu selected index
+     * @return 0-7: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+     */
+    uint8_t getCirculationMenuSelectedIndex() const { return circulationMenuSelectedIndex; }
+    
+    /**
+     * @brief Set circulation menu selected index
+     * @param index 0-7: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+     */
+    void setCirculationMenuSelectedIndex(uint8_t index) {
+        if (index <= 7) {  // 8 menu items (0-7)
+            circulationMenuSelectedIndex = index;
+            needsRedraw = true;
+        }
+    }
+    
+    /**
+     * @brief Navigate circulation menu (left/right)
+     * @param direction -1 = left/up, +1 = right/down
+     */
+    void navigateCirculationMenu(int8_t direction) {
+        if (direction < 0) {
+            // Navigate up (wrap around)
+            circulationMenuSelectedIndex = (circulationMenuSelectedIndex == 0) ? 7 : (circulationMenuSelectedIndex - 1);
+        } else if (direction > 0) {
+            // Navigate down (wrap around)
+            circulationMenuSelectedIndex = (circulationMenuSelectedIndex == 7) ? 0 : (circulationMenuSelectedIndex + 1);
+        }
+        needsRedraw = true;
+    }
+    
+    /**
      * @brief Draw bitmap scaled down by factor of 2
      * @param bitmap Pointer to bitmap data in PROGMEM
      * @param x X position on display
@@ -211,6 +243,9 @@ private:
     // Main Menu UI state
     uint8_t mainMenuSelectedIndex;  // 0 = Circulation, 1 = Settings
     
+    // Circulation UI state
+    uint8_t circulationMenuSelectedIndex;  // 0-7: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+    
     // ------------------------------------------------------------------------
     // Private Methods
     // ------------------------------------------------------------------------
@@ -256,5 +291,11 @@ private:
      * circulation_bitmap or settings_bitmap with labels
      */
     void renderMainMenuScreen();
+    
+    /**
+     * @brief Render Circulation UI screen (Task 38)
+     * Scrollable list of features: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+     */
+    void renderCirculationScreen();
 };
 
