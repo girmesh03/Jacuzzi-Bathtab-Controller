@@ -548,8 +548,8 @@ void UIManager::renderCirculationScreen() {
             // Light system
             itemBitmap = light_bulb_bitmap;
             itemLabel = "Lights";
-            sourceWidth = LIGHT_BULB_BMPWIDTH;
-            sourceHeight = LIGHT_BULB_BMPHEIGHT;
+            sourceWidth = LIGHTBULB_BMPWIDTH;
+            sourceHeight = LIGHTBULB_BMPHEIGHT;
             break;
             
         case 6:
