@@ -16,6 +16,7 @@
 #include "SafetySystem.h"
 #include "UIManager.h"
 #include "InputHandler.h"
+#include "BuzzerController.h"
 
 // ============================================================================
 // Debug Macros
@@ -44,6 +45,7 @@ StateMachine stateMachine(sensorManager, relayController, i2cBus);
 SafetySystem safetySystem(sensorManager, relayController, stateMachine);
 UIManager uiManager(sensorManager, safetySystem, stateMachine);
 InputHandler inputHandler;
+BuzzerController buzzer;
 
 // ============================================================================
 // Setup Function
@@ -234,7 +236,8 @@ void setup() {
     
     // Input Handler Initialization (Phase 7)
     inputHandler.begin();
-    
+    buzzer.begin();
+
     // ------------------------------------------------------------------------
     // Hardware Initialization Complete
     // ------------------------------------------------------------------------
@@ -285,6 +288,7 @@ static void handleCirculationInput();
 static void handleWarningInput();
 static void handleFaultInput();
 static void handleFaultInspectionInput();
+static void handleBuzzerEvents();
 
 // ============================================================================
 // Loop Function
@@ -295,8 +299,11 @@ void loop() {
     stateMachine.update();
     safetySystem.update();
     inputHandler.update();
+    buzzer.update();
 
     handleUIInput();
+
+    handleBuzzerEvents();
 
     uiManager.update(stateMachine.getCurrentState());
 }
@@ -320,6 +327,7 @@ static void handleUIInput() {
 static void handleReadyInput() {
     if (inputHandler.wasButtonPressed()) {
         DEBUG_PRINTLN(F("[INPUT] Button pressed in Ready UI - transitioning to Main Menu"));
+        buzzer.briefBeep();
         uiManager.forceUIState(UI_MAIN_MENU);
     }
 }
@@ -330,9 +338,11 @@ static void handleMainMenuInput() {
 
     if (inputHandler.isButtonHeld()) {
         DEBUG_PRINTLN(F("[INPUT] Button HELD in Main Menu - returning to Ready UI"));
+        buzzer.briefBeep();
         uiManager.forceUIState(UI_READY);
     } else if (inputHandler.wasButtonPressed()) {
         DEBUG_PRINTLN(F("[INPUT] Button pressed in Main Menu - entering Circulation UI"));
+        buzzer.briefBeep();
         uiManager.selectMainMenuItem();
     }
 }
@@ -340,6 +350,7 @@ static void handleMainMenuInput() {
 static void handleCirculationInput() {
     if (inputHandler.isButtonHeld()) {
         DEBUG_PRINTLN(F("[INPUT] Button HELD in Circulation UI - returning to Ready UI"));
+        buzzer.briefBeep();
 
         if (safetySystem.isCirculationStarted()) {
             DEBUG_PRINTLN(F("[INPUT] Stopping circulation..."));
@@ -368,6 +379,7 @@ static void handleCirculationInput() {
     }
 
     if (inputHandler.wasButtonPressed()) {
+        buzzer.briefBeep();
         uint8_t selectedIndex = uiManager.getCirculationMenuSelectedIndex();
         DEBUG_PRINT(F("[INPUT] Button pressed in Circulation UI - selected index: "));
         DEBUG_PRINTLN(selectedIndex);
@@ -396,6 +408,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting massage..."));
                     if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_MASSAGE)) {
                         uiManager.showDenialMessage("Start", "Circulation");
+                    } else {
+                        buzzer.confirmationBeep();
                     }
                 }
                 uiManager.requestRedraw();
@@ -409,6 +423,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting jet..."));
                     if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_JET)) {
                         uiManager.showDenialMessage("Start", "Circulation");
+                    } else {
+                        buzzer.confirmationBeep();
                     }
                 }
                 uiManager.requestRedraw();
@@ -435,6 +451,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting ozone..."));
                     if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_OZONE)) {
                         uiManager.showDenialMessage("Start", "Circulation");
+                    } else {
+                        buzzer.confirmationBeep();
                     }
                 }
                 uiManager.requestRedraw();
@@ -448,6 +466,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting speaker..."));
                     if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_SPEAKER)) {
                         uiManager.showDenialMessage("Start", "Circulation");
+                    } else {
+                        buzzer.confirmationBeep();
                     }
                 }
                 uiManager.requestRedraw();
@@ -461,6 +481,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting lights..."));
                     if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_LIGHTS)) {
                         uiManager.showDenialMessage("Start", "Circulation");
+                    } else {
+                        buzzer.confirmationBeep();
                     }
                 }
                 uiManager.requestRedraw();
@@ -473,6 +495,7 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F(" °C"));
                     safetySystem.setUserTargetTemperature(uiManager.getAdjustedTemperature());
                     uiManager.confirmTemperatureSetting();
+                    buzzer.confirmationBeep();
                 } else {
                     DEBUG_PRINTLN(F("[INPUT] Starting temperature adjustment"));
                     uiManager.adjustTemperature(0);
@@ -485,6 +508,7 @@ static void handleCirculationInput() {
 static void handleWarningInput() {
     if (inputHandler.wasButtonPressed()) {
         DEBUG_PRINTLN(F("[INPUT] Button pressed in Warning UI - acknowledging"));
+        buzzer.briefBeep();
 
         if (safetySystem.isThermalRunawayAcknowledgmentRequired()) {
             safetySystem.acknowledgeThermalRunaway();
@@ -498,6 +522,7 @@ static void handleWarningInput() {
 static void handleFaultInput() {
     if (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld()) {
         DEBUG_PRINTLN(F("[INPUT] Fault UI - entering Fault Inspection"));
+        buzzer.briefBeep();
         uiManager.resetFaultInspectionIndex();
         uiManager.forceUIState(UI_FAULT_INSPECTION);
     }
@@ -514,6 +539,45 @@ static void handleFaultInspectionInput() {
 
     if (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld()) {
         DEBUG_PRINTLN(F("[INPUT] Fault Inspection - returning to Fault UI"));
+        buzzer.briefBeep();
         uiManager.forceUIState(UI_FAULT);
     }
+}
+
+// ============================================================================
+// Buzzer Event Handler
+// ============================================================================
+
+static void handleBuzzerEvents() {
+    static SystemState prevState = STATE_BOOT;
+    static bool prevCirculationStarted = safetySystem.isCirculationStarted();
+    static bool prevHeaterActive = safetySystem.isHeaterActive();
+
+    SystemState currentState = stateMachine.getCurrentState();
+
+    if (currentState == STATE_FAULT && prevState != STATE_FAULT) {
+        buzzer.alertBeep();
+    }
+
+    if (currentState == STATE_SHUTDOWN && prevState != STATE_SHUTDOWN) {
+        buzzer.alertBeep();
+    }
+
+    if (currentState == STATE_WARNING && prevState != STATE_WARNING) {
+        buzzer.warningBeep();
+    }
+
+    bool circStarted = safetySystem.isCirculationStarted();
+    if (circStarted && !prevCirculationStarted) {
+        buzzer.confirmationBeep();
+    }
+
+    bool heaterActive = safetySystem.isHeaterActive();
+    if (heaterActive && !prevHeaterActive) {
+        buzzer.confirmationBeep();
+    }
+
+    prevState = currentState;
+    prevCirculationStarted = circStarted;
+    prevHeaterActive = heaterActive;
 }
