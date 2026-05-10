@@ -42,6 +42,8 @@ UIManager::UIManager(SensorManager& sensors, SafetySystem& safety, StateMachine&
       tempAdjustmentActive(false),  // Not adjusting temperature initially
       faultInspectionIndex(0),  // Start at first fault
       currentFaultDisplayIndex(0),  // Start at first fault
+      circulationCountdownActive(false),
+      circulationCountdownStartTime(0),
       denialMessageEndTime(0) {
     denialMessage[0] = '\0';
     denialBottomLabel[0] = '\0';
@@ -105,7 +107,11 @@ void UIManager::update(SystemState currentSystemState) {
     if (currentTime - lastUpdateTime >= DISPLAY_UPDATE_INTERVAL_MS) {
         // Redraw if needed OR if we're in a state that should always show (Boot, Initialization)
         // This ensures splash screens are always visible
-        bool alwaysShowStates = (currentUIState == UI_POWER_UP || currentUIState == UI_INITIALIZATION);
+        // Also force redraw during circulation countdown for live countdown display
+        bool countdownActive = (currentUIState == UI_CIRCULATION &&
+                                circulationMenuSelectedIndex == 0 &&
+                                circulationCountdownActive);
+        bool alwaysShowStates = (currentUIState == UI_POWER_UP || currentUIState == UI_INITIALIZATION) || countdownActive;
         
         if (needsRedraw || alwaysShowStates) {
             // Render current UI screen
@@ -357,7 +363,7 @@ void UIManager::renderCurrentScreen() {
     if (denialMessage[0] != '\0') {
         int16_t msgWidth = strlen(denialMessage) * UI_GLYPH_SPACING;
         int16_t msgX = (DISPLAY_WIDTH - msgWidth) / 2;
-        int16_t msgY = 42;
+        int16_t msgY = 40;
         drawTextUnscaled(denialMessage, msgX, msgY);
     }
     
@@ -567,8 +573,9 @@ void UIManager::renderCirculationScreen() {
             displayTemp = safetySystem.getTargetTemperature();
         }
 
-        // Left: Thermometer bitmap (scaled 64x32, flush left, vertically centered)
-        drawScaledBitmap(thermometer_bitmap, 0, (DISPLAY_HEIGHT - (THERMOMETER_BMPHEIGHT / 2)) / 2,
+        // Left: Thermometer bitmap, lifted up 6px from original center
+        int16_t thermoY = (DISPLAY_HEIGHT - (THERMOMETER_BMPHEIGHT / 2)) / 2 - 6;
+        drawScaledBitmap(thermometer_bitmap, 0, thermoY,
                          THERMOMETER_BMPWIDTH, THERMOMETER_BMPHEIGHT);
 
         // Right: Temperature - integer part in 2x, decimal+unit unscaled
@@ -593,7 +600,7 @@ void UIManager::renderCirculationScreen() {
         decUnitStr[di] = '\0';
 
         int16_t intX = 50;
-        int16_t intY = 24;
+        int16_t intY = 18;
         drawText2x(intStr, intX, intY);
 
         int16_t decX = intX + (strlen(intStr) * UI_GLYPH_2X_SPACING);
@@ -706,10 +713,30 @@ void UIManager::renderCirculationScreen() {
     // Scale down bitmap by factor of 2
     int16_t scaledWidth = sourceWidth / 2;
     int16_t bitmapX = (DISPLAY_WIDTH - scaledWidth) / 2;
-    int16_t bitmapY = 8;
+    int16_t bitmapY = 4;
 
     // Draw item bitmap scaled down by factor of 2
     drawScaledBitmap(itemBitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
+
+    // Show countdown at top-left using independent timer (not tied to SafetySystem state)
+    if (circulationMenuSelectedIndex == 0 && circulationCountdownActive) {
+        unsigned long elapsed = millis() - circulationCountdownStartTime;
+        if (elapsed < CIRCULATION_DELAYED_START_MS) {
+            unsigned long remaining = CIRCULATION_DELAYED_START_MS - elapsed;
+            int secondsRemaining = (int)((remaining + 999) / 1000);
+
+            char countdownStr[4];
+            int ci = 0;
+            if (secondsRemaining >= 10) countdownStr[ci++] = '0' + (secondsRemaining / 10);
+            countdownStr[ci++] = '0' + (secondsRemaining % 10);
+            countdownStr[ci] = 's';
+            countdownStr[ci] = '\0';
+
+            drawTextUnscaled(countdownStr, 2, 2);
+        } else {
+            circulationCountdownActive = false;
+        }
+    }
 
     // Display ON/OFF status in top right corner
     const char* statusText = itemIsOn ? "ON" : "OFF";
@@ -1008,6 +1035,12 @@ void UIManager::navigateCirculationMenu(int8_t direction) {
         DEBUG_PRINT(F("[UI] Circulation Menu navigate: index = "));
         DEBUG_PRINTLN(circulationMenuSelectedIndex);
     #endif
+}
+
+void UIManager::startCirculationCountdown() {
+    circulationCountdownActive = true;
+    circulationCountdownStartTime = millis();
+    needsRedraw = true;
 }
 
 void UIManager::showDenialMessage(const char* message, const char* bottomLabel) {

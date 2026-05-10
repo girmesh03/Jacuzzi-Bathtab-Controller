@@ -280,6 +280,7 @@ private:
     
     // Feature control
     void deactivateAllDependentFeatures();
+    bool hasAnyFeatureActive() const;
     
     // Thermal runaway detection
     float calculateTemperatureDelta();

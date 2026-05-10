@@ -270,6 +270,9 @@ void SafetySystem::activateCirculationPump() {
             Serial.println(F("[SAFETY] Circulation pump STARTED"));
         #endif
         
+        // Drive state machine transition to Active_Circulation
+        stateMachine.requestTransition(STATE_ACTIVE_CIRCULATION);
+
         // Start heater auto-start countdown if enabled
         if (heaterAutoStartEnabled && checkHeaterPreconditions()) {
             heaterAutoStartPending = true;
@@ -310,6 +313,9 @@ void SafetySystem::deactivateCirculationPump() {
     // Deactivate circulation relay
     if (relayController.setRelay(RELAY_CHANNEL_CIRCULATION, false)) {
         circulationStarted = false;
+
+        // Drive state machine transition to Ready
+        stateMachine.requestTransition(STATE_READY);
         
         #ifdef ENABLE_SERIAL_DEBUG
             Serial.println(F("[SAFETY] Circulation pump STOPPED"));
@@ -483,7 +489,12 @@ void SafetySystem::activateHeater() {
     if (relayController.setRelay(RELAY_CHANNEL_HEATER, true)) {
         heaterActive = true;
         heaterAutoStartPending = false;
-        
+
+        // Drive state machine to Feature_Enabled_Bath if coming from Active_Circulation
+        if (stateMachine.getCurrentState() == STATE_ACTIVE_CIRCULATION) {
+            stateMachine.requestTransition(STATE_FEATURE_ENABLED_BATH);
+        }
+
         #ifdef ENABLE_SERIAL_DEBUG
             Serial.println(F("[SAFETY] Water heater STARTED"));
             Serial.print(F("  Current temperature: "));
@@ -503,7 +514,12 @@ void SafetySystem::activateHeater() {
 void SafetySystem::deactivateHeater() {
     if (relayController.setRelay(RELAY_CHANNEL_HEATER, false)) {
         heaterActive = false;
-        
+
+        // Drive state machine back to Active_Circulation if no features remain
+        if (stateMachine.getCurrentState() == STATE_FEATURE_ENABLED_BATH && !hasAnyFeatureActive()) {
+            stateMachine.requestTransition(STATE_ACTIVE_CIRCULATION);
+        }
+
         #ifdef ENABLE_SERIAL_DEBUG
             Serial.println(F("[SAFETY] Water heater STOPPED"));
         #endif
@@ -536,6 +552,12 @@ bool SafetySystem::requestFeatureStart(uint8_t channel) {
             Serial.print(channel);
             Serial.println(F(")"));
         #endif
+
+        // Drive state machine to Feature_Enabled_Bath if coming from Active_Circulation
+        if (stateMachine.getCurrentState() == STATE_ACTIVE_CIRCULATION) {
+            stateMachine.requestTransition(STATE_FEATURE_ENABLED_BATH);
+        }
+
         return true;
     } else {
         #ifdef ENABLE_SERIAL_DEBUG
@@ -554,6 +576,11 @@ void SafetySystem::requestFeatureStop(uint8_t channel) {
             Serial.print(channel);
             Serial.println(F(")"));
         #endif
+
+        // Drive state machine back to Active_Circulation if no features remain
+        if (stateMachine.getCurrentState() == STATE_FEATURE_ENABLED_BATH && !hasAnyFeatureActive()) {
+            stateMachine.requestTransition(STATE_ACTIVE_CIRCULATION);
+        }
     } else {
         #ifdef ENABLE_SERIAL_DEBUG
             Serial.print(F("[SAFETY] ERROR: Failed to deactivate feature relay (channel "));
@@ -565,6 +592,15 @@ void SafetySystem::requestFeatureStop(uint8_t channel) {
 
 bool SafetySystem::isFeatureActive(uint8_t channel) const {
     return relayController.getRelayState(channel);
+}
+
+bool SafetySystem::hasAnyFeatureActive() const {
+    return relayController.getRelayState(RELAY_CHANNEL_MASSAGE) ||
+           relayController.getRelayState(RELAY_CHANNEL_JET) ||
+           relayController.getRelayState(RELAY_CHANNEL_HEATER) ||
+           relayController.getRelayState(RELAY_CHANNEL_OZONE) ||
+           relayController.getRelayState(RELAY_CHANNEL_SPEAKER) ||
+           relayController.getRelayState(RELAY_CHANNEL_LIGHTS);
 }
 
 void SafetySystem::deactivateAllDependentFeatures() {

@@ -395,6 +395,8 @@ static void handleCirculationInput() {
                     DEBUG_PRINTLN(F("[INPUT] Starting circulation..."));
                     if (!safetySystem.requestCirculationStart()) {
                         uiManager.showDenialMessage("Not ready");
+                    } else {
+                        uiManager.startCirculationCountdown();
                     }
                     uiManager.requestRedraw();
                 }

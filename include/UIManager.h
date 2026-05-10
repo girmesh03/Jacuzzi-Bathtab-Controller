@@ -172,6 +172,12 @@ public:
     bool isTemperatureAdjustmentActive() const { return tempAdjustmentActive; }
     
     /**
+     * @brief Start circulation countdown display
+     * Called from main.cpp when circulation start is requested
+     */
+    void startCirculationCountdown();
+
+    /**
      * @brief Show a denial message overlay on screen
      * @param message Brief text shown between bitmap and label (e.g., "Start")
      * @param bottomLabel Optional replacement text for bottom feature label (e.g., "Circulation")
@@ -331,6 +337,10 @@ private:
     // Fault display state
     uint8_t currentFaultDisplayIndex;  // Current fault being displayed on Fault UI (0-based)
     
+    // Circulation countdown state (independent of SafetySystem for reliable display)
+    bool circulationCountdownActive;
+    unsigned long circulationCountdownStartTime;
+
     // Denial message overlay state
     char denialMessage[24];      // Message buffer for denial feedback (shown between bitmap and label)
     char denialBottomLabel[24];  // Replacement bottom label during denial (e.g., "Circulation")
