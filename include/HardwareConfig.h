@@ -86,6 +86,6 @@
 // 1. Boot-strap pins (GPIO0, GPIO15) require careful circuit design
 // 2. GPIO15 (D8) MUST be LOW at boot - initialize FIRST in setup()
 // 3. GPIO0 (D3) circuit must include pull-up resistor
-// 4. A0 (ADC0/GPIO17) validation required in Phase 7 for encoder DT
+// 4. D4 (GPIO2) selected as encoder DT after A0 (ADC0/GPIO17) validation determined unreliable
 // 5. All relays use active-low logic through PCF8574
 // 6. Spare relay channel (bit 7) reserved for future use

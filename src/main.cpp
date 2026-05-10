@@ -232,7 +232,7 @@ void setup() {
     // UI Manager Initialization (Phase 6)
     uiManager.begin();
     
-    // Input Handler Initialization (Phase 7 - Minimal Support for Phase 6 Testing)
+    // Input Handler Initialization (Phase 7)
     inputHandler.begin();
     
     // ------------------------------------------------------------------------
@@ -276,259 +276,214 @@ void setup() {
 }
 
 // ============================================================================
+// Forward Declarations for UI Input Handlers
+// ============================================================================
+static void handleUIInput();
+static void handleReadyInput();
+static void handleMainMenuInput();
+static void handleCirculationInput();
+static void handleWarningInput();
+static void handleFaultInput();
+static void handleFaultInspectionInput();
+
+// ============================================================================
 // Loop Function
 // ============================================================================
 void loop() {
-    // ------------------------------------------------------------------------
-    // Phase 2: Sensor Integration
-    // ------------------------------------------------------------------------
-    
-    // Update sensors (non-blocking)
     sensorManager.update();
-    
-    // ------------------------------------------------------------------------
-    // Phase 3: Relay Control and I2C Bus Management
-    // ------------------------------------------------------------------------
-    
-    // Update relay controller (non-blocking)
     relayController.update();
-    
-    // ------------------------------------------------------------------------
-    // Phase 4: State Machine
-    // ------------------------------------------------------------------------
-    
-    // Update state machine (non-blocking)
     stateMachine.update();
-    
-    // ------------------------------------------------------------------------
-    // Phase 5: Safety System
-    // ------------------------------------------------------------------------
-    
-    // Update safety system (non-blocking)
     safetySystem.update();
-    
-    // ------------------------------------------------------------------------
-    // Phase 6: User Interface - Display
-    // ------------------------------------------------------------------------
-    
-    // ------------------------------------------------------------------------
-    // Phase 7: User Interface - Input (Minimal Support for Phase 6 Testing)
-    // ------------------------------------------------------------------------
-    
-    // Update input handler (non-blocking)
     inputHandler.update();
-    
-    // Handle encoder input based on current UI state
-    UIState currentUIState = uiManager.getCurrentUIState();
-    
-    // Ready UI → Main Menu (button press)
-    if (currentUIState == UI_READY && inputHandler.wasButtonPressed()) {
-        // Transition to Main Menu UI
+
+    handleUIInput();
+
+    uiManager.update(stateMachine.getCurrentState());
+}
+
+// ============================================================================
+// UI Input Handlers
+// ============================================================================
+
+static void handleUIInput() {
+    switch (uiManager.getCurrentUIState()) {
+        case UI_READY:            handleReadyInput();            break;
+        case UI_MAIN_MENU:        handleMainMenuInput();         break;
+        case UI_CIRCULATION:      handleCirculationInput();      break;
+        case UI_WARNING:          handleWarningInput();          break;
+        case UI_FAULT:            handleFaultInput();            break;
+        case UI_FAULT_INSPECTION: handleFaultInspectionInput();  break;
+        default: break;
+    }
+}
+
+static void handleReadyInput() {
+    if (inputHandler.wasButtonPressed()) {
         DEBUG_PRINTLN(F("[INPUT] Button pressed in Ready UI - transitioning to Main Menu"));
         uiManager.forceUIState(UI_MAIN_MENU);
     }
-    
-    // Main Menu (only one item: Start circulation)
-    if (currentUIState == UI_MAIN_MENU) {
-        // Consume stale encoder events to prevent leaking into Circulation UI
-        inputHandler.wasRotatedCW();
-        inputHandler.wasRotatedCCW();
-        
-        // Long press - return to Ready UI
-        if (inputHandler.isButtonHeld()) {
-            DEBUG_PRINTLN(F("[INPUT] Button HELD in Main Menu - returning to Ready UI"));
-            uiManager.forceUIState(UI_READY);
+}
+
+static void handleMainMenuInput() {
+    inputHandler.wasRotatedCW();
+    inputHandler.wasRotatedCCW();
+
+    if (inputHandler.isButtonHeld()) {
+        DEBUG_PRINTLN(F("[INPUT] Button HELD in Main Menu - returning to Ready UI"));
+        uiManager.forceUIState(UI_READY);
+    } else if (inputHandler.wasButtonPressed()) {
+        DEBUG_PRINTLN(F("[INPUT] Button pressed in Main Menu - entering Circulation UI"));
+        uiManager.selectMainMenuItem();
+    }
+}
+
+static void handleCirculationInput() {
+    if (inputHandler.isButtonHeld()) {
+        DEBUG_PRINTLN(F("[INPUT] Button HELD in Circulation UI - returning to Ready UI"));
+
+        if (safetySystem.isCirculationStarted()) {
+            DEBUG_PRINTLN(F("[INPUT] Stopping circulation..."));
+            safetySystem.requestCirculationStop();
+        } else if (safetySystem.isCirculationSelected()) {
+            safetySystem.cancelCirculationStart();
         }
-        // Button press - enter Circulation UI
-        else if (inputHandler.wasButtonPressed()) {
-            DEBUG_PRINTLN(F("[INPUT] Button pressed in Main Menu - entering Circulation UI"));
-            uiManager.selectMainMenuItem();
+
+        uiManager.forceUIState(UI_READY);
+    } else if (inputHandler.wasRotatedCW()) {
+        if (uiManager.getCirculationMenuSelectedIndex() == 7 && uiManager.isTemperatureAdjustmentActive()) {
+            uiManager.adjustTemperature(-1);
+            DEBUG_PRINTLN(F("[INPUT] Rotary CW (HW) / CCW (Physical) - Temperature decrease"));
+        } else {
+            uiManager.navigateCirculationMenu(-1);
+            DEBUG_PRINTLN(F("[INPUT] Rotary CW (HW) / CCW (Physical) - Circulation Menu navigate backward"));
+        }
+    } else if (inputHandler.wasRotatedCCW()) {
+        if (uiManager.getCirculationMenuSelectedIndex() == 7 && uiManager.isTemperatureAdjustmentActive()) {
+            uiManager.adjustTemperature(1);
+            DEBUG_PRINTLN(F("[INPUT] Rotary CCW (HW) / CW (Physical) - Temperature increase"));
+        } else {
+            uiManager.navigateCirculationMenu(1);
+            DEBUG_PRINTLN(F("[INPUT] Rotary CCW (HW) / CW (Physical) - Circulation Menu navigate forward"));
         }
     }
-    
-    // Circulation UI navigation
-    if (currentUIState == UI_CIRCULATION) {
-        // Long press - return to Ready UI
-        if (inputHandler.isButtonHeld()) {
-            DEBUG_PRINTLN(F("[INPUT] Button HELD in Circulation UI - returning to Ready UI"));
-            
-            // Stop circulation if active
-            if (safetySystem.isCirculationStarted()) {
-                DEBUG_PRINTLN(F("[INPUT] Stopping circulation..."));
-                safetySystem.requestCirculationStop();
-            } else if (safetySystem.isCirculationSelected()) {
-                safetySystem.cancelCirculationStart();
-            }
-            
-            uiManager.forceUIState(UI_READY);
-        }
-        // CRITICAL FIX: Hardware encoder CLK/DT pins are physically reversed
-        // When user rotates CW physically, hardware reports CCW (and vice versa)
-        // So we swap the direction values to compensate
-        
-        // Rotary encoder navigation (up/down through 8 items)
-        else if (inputHandler.wasRotatedCW()) {
-            // Hardware reports CW, but user actually rotated CCW physically
-            // Check if on thermometer screen (index 7)
-            if (uiManager.getCirculationMenuSelectedIndex() == 7 && uiManager.isTemperatureAdjustmentActive()) {
-                // Adjusting temperature - user rotated CCW physically = decrease
-                uiManager.adjustTemperature(-1);
-                DEBUG_PRINTLN(F("[INPUT] Rotary CW (HW) / CCW (Physical) - Temperature decrease"));
-            } else {
-                // Normal menu navigation - user rotated CCW physically = backward
-                uiManager.navigateCirculationMenu(-1);
-                DEBUG_PRINTLN(F("[INPUT] Rotary CW (HW) / CCW (Physical) - Circulation Menu navigate backward"));
-            }
-        } else if (inputHandler.wasRotatedCCW()) {
-            // Hardware reports CCW, but user actually rotated CW physically
-            // Check if on thermometer screen (index 7)
-            if (uiManager.getCirculationMenuSelectedIndex() == 7 && uiManager.isTemperatureAdjustmentActive()) {
-                // Adjusting temperature - user rotated CW physically = increase
-                uiManager.adjustTemperature(1);
-                DEBUG_PRINTLN(F("[INPUT] Rotary CCW (HW) / CW (Physical) - Temperature increase"));
-            } else {
-                // Normal menu navigation - user rotated CW physically = forward
-                uiManager.navigateCirculationMenu(1);
-                DEBUG_PRINTLN(F("[INPUT] Rotary CCW (HW) / CW (Physical) - Circulation Menu navigate forward"));
-            }
-        }
-        
-        // Button press - toggle selected item or confirm temperature
-        if (inputHandler.wasButtonPressed()) {
-            uint8_t selectedIndex = uiManager.getCirculationMenuSelectedIndex();
-            DEBUG_PRINT(F("[INPUT] Button pressed in Circulation UI - selected index: "));
-            DEBUG_PRINTLN(selectedIndex);
-            
-            // Handle item toggle based on selected index
-            switch (selectedIndex) {
-                case 0:
-                    // Circulation pump toggle
-                    if (safetySystem.isCirculationStarted()) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping circulation..."));
-                        safetySystem.requestCirculationStop();
-                        
-                        // CRITICAL: When circulation stops, return to Ready UI
-                        // This will also stop all features (handled by SafetySystem)
-                        DEBUG_PRINTLN(F("[INPUT] Returning to Ready UI"));
-                        uiManager.forceUIState(UI_READY);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting circulation..."));
-                        if (!safetySystem.requestCirculationStart()) {
-                            uiManager.showDenialMessage("Not ready");
-                        }
-                        uiManager.requestRedraw();
-                    }
-                    break;
-                    
-                case 1:
-                    // Massage pump toggle
-                    if (safetySystem.isFeatureActive(RELAY_CHANNEL_MASSAGE)) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping massage..."));
-                        safetySystem.requestFeatureStop(RELAY_CHANNEL_MASSAGE);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting massage..."));
-                        if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_MASSAGE)) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+
+    if (inputHandler.wasButtonPressed()) {
+        uint8_t selectedIndex = uiManager.getCirculationMenuSelectedIndex();
+        DEBUG_PRINT(F("[INPUT] Button pressed in Circulation UI - selected index: "));
+        DEBUG_PRINTLN(selectedIndex);
+
+        switch (selectedIndex) {
+            case 0:
+                if (safetySystem.isCirculationStarted()) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping circulation..."));
+                    safetySystem.requestCirculationStop();
+                    DEBUG_PRINTLN(F("[INPUT] Returning to Ready UI"));
+                    uiManager.forceUIState(UI_READY);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting circulation..."));
+                    if (!safetySystem.requestCirculationStart()) {
+                        uiManager.showDenialMessage("Not ready");
                     }
                     uiManager.requestRedraw();
-                    break;
-                    
-                case 2:
-                    // Jet pump toggle
-                    if (safetySystem.isFeatureActive(RELAY_CHANNEL_JET)) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping jet..."));
-                        safetySystem.requestFeatureStop(RELAY_CHANNEL_JET);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting jet..."));
-                        if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_JET)) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+                }
+                break;
+
+            case 1:
+                if (safetySystem.isFeatureActive(RELAY_CHANNEL_MASSAGE)) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping massage..."));
+                    safetySystem.requestFeatureStop(RELAY_CHANNEL_MASSAGE);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting massage..."));
+                    if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_MASSAGE)) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    uiManager.requestRedraw();
-                    break;
-                    
-                case 3:
-                    // Water heater toggle
-                    if (safetySystem.isHeaterActive()) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping heater..."));
-                        safetySystem.requestHeaterStop();
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting heater..."));
-                        if (!safetySystem.requestHeaterStart()) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 2:
+                if (safetySystem.isFeatureActive(RELAY_CHANNEL_JET)) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping jet..."));
+                    safetySystem.requestFeatureStop(RELAY_CHANNEL_JET);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting jet..."));
+                    if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_JET)) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    uiManager.requestRedraw();
-                    break;
-                    
-                case 4:
-                    // Ozone generator toggle
-                    if (safetySystem.isFeatureActive(RELAY_CHANNEL_OZONE)) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping ozone..."));
-                        safetySystem.requestFeatureStop(RELAY_CHANNEL_OZONE);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting ozone..."));
-                        if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_OZONE)) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 3:
+                if (safetySystem.isHeaterActive()) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping heater..."));
+                    safetySystem.requestHeaterStop();
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting heater..."));
+                    if (!safetySystem.requestHeaterStart()) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    uiManager.requestRedraw();
-                    break;
-                    
-                case 5:
-                    // Speaker relay toggle
-                    if (safetySystem.isFeatureActive(RELAY_CHANNEL_SPEAKER)) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping speaker..."));
-                        safetySystem.requestFeatureStop(RELAY_CHANNEL_SPEAKER);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting speaker..."));
-                        if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_SPEAKER)) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 4:
+                if (safetySystem.isFeatureActive(RELAY_CHANNEL_OZONE)) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping ozone..."));
+                    safetySystem.requestFeatureStop(RELAY_CHANNEL_OZONE);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting ozone..."));
+                    if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_OZONE)) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    uiManager.requestRedraw();
-                    break;
-                    
-                case 6:
-                    // Light system toggle
-                    if (safetySystem.isFeatureActive(RELAY_CHANNEL_LIGHTS)) {
-                        DEBUG_PRINTLN(F("[INPUT] Stopping lights..."));
-                        safetySystem.requestFeatureStop(RELAY_CHANNEL_LIGHTS);
-                    } else {
-                        DEBUG_PRINTLN(F("[INPUT] Starting lights..."));
-                        if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_LIGHTS)) {
-                            uiManager.showDenialMessage("Start", "Circulation");
-                        }
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 5:
+                if (safetySystem.isFeatureActive(RELAY_CHANNEL_SPEAKER)) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping speaker..."));
+                    safetySystem.requestFeatureStop(RELAY_CHANNEL_SPEAKER);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting speaker..."));
+                    if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_SPEAKER)) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    uiManager.requestRedraw();
-                    break;
-                    
-                case 7:
-                    // Temperature display - button press behavior depends on adjustment state
-                    if (uiManager.isTemperatureAdjustmentActive()) {
-                        // Confirm temperature setting
-                        DEBUG_PRINT(F("[INPUT] Confirming temperature setting: "));
-                        DEBUG_PRINT(uiManager.getAdjustedTemperature());
-                        DEBUG_PRINTLN(F(" °C"));
-                        
-                        // Set the new target temperature
-                        safetySystem.setUserTargetTemperature(uiManager.getAdjustedTemperature());
-                        
-                        // Confirm in UI
-                        uiManager.confirmTemperatureSetting();
-                    } else {
-                        // Start temperature adjustment
-                        DEBUG_PRINTLN(F("[INPUT] Starting temperature adjustment"));
-                        uiManager.adjustTemperature(0);  // Initialize adjustment mode
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 6:
+                if (safetySystem.isFeatureActive(RELAY_CHANNEL_LIGHTS)) {
+                    DEBUG_PRINTLN(F("[INPUT] Stopping lights..."));
+                    safetySystem.requestFeatureStop(RELAY_CHANNEL_LIGHTS);
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting lights..."));
+                    if (!safetySystem.requestFeatureStart(RELAY_CHANNEL_LIGHTS)) {
+                        uiManager.showDenialMessage("Start", "Circulation");
                     }
-                    break;
-            }
+                }
+                uiManager.requestRedraw();
+                break;
+
+            case 7:
+                if (uiManager.isTemperatureAdjustmentActive()) {
+                    DEBUG_PRINT(F("[INPUT] Confirming temperature setting: "));
+                    DEBUG_PRINT(uiManager.getAdjustedTemperature());
+                    DEBUG_PRINTLN(F(" °C"));
+                    safetySystem.setUserTargetTemperature(uiManager.getAdjustedTemperature());
+                    uiManager.confirmTemperatureSetting();
+                } else {
+                    DEBUG_PRINTLN(F("[INPUT] Starting temperature adjustment"));
+                    uiManager.adjustTemperature(0);
+                }
+                break;
         }
     }
-    
-    // Warning UI - acknowledge warning (button press)
-    if (currentUIState == UI_WARNING && inputHandler.wasButtonPressed()) {
+}
+
+static void handleWarningInput() {
+    if (inputHandler.wasButtonPressed()) {
         DEBUG_PRINTLN(F("[INPUT] Button pressed in Warning UI - acknowledging"));
 
         if (safetySystem.isThermalRunawayAcknowledgmentRequired()) {
@@ -538,143 +493,27 @@ void loop() {
         stateMachine.requestTransition(STATE_FEATURE_ENABLED_BATH);
         uiManager.forceUIState(UI_CIRCULATION);
     }
+}
 
-    // Fault UI - enter fault inspection (button press or held)
-    if (currentUIState == UI_FAULT &&
-        (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld())) {
-
+static void handleFaultInput() {
+    if (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld()) {
         DEBUG_PRINTLN(F("[INPUT] Fault UI - entering Fault Inspection"));
         uiManager.resetFaultInspectionIndex();
         uiManager.forceUIState(UI_FAULT_INSPECTION);
     }
+}
 
-    // Fault Inspection UI - browse faults
-    if (currentUIState == UI_FAULT_INSPECTION) {
-        // Rotary scrolls through faults (direction swapped to match physical rotation)
-        if (inputHandler.wasRotatedCW()) {
-            uiManager.navigateFaultInspection(-1);
-            DEBUG_PRINTLN(F("[INPUT] Fault Inspection navigate backward"));
-        } else if (inputHandler.wasRotatedCCW()) {
-            uiManager.navigateFaultInspection(1);
-            DEBUG_PRINTLN(F("[INPUT] Fault Inspection navigate forward"));
-        }
-
-        // Button press or held - return to Fault UI
-        if (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld()) {
-            DEBUG_PRINTLN(F("[INPUT] Fault Inspection - returning to Fault UI"));
-            uiManager.forceUIState(UI_FAULT);
-        }
+static void handleFaultInspectionInput() {
+    if (inputHandler.wasRotatedCW()) {
+        uiManager.navigateFaultInspection(-1);
+        DEBUG_PRINTLN(F("[INPUT] Fault Inspection navigate backward"));
+    } else if (inputHandler.wasRotatedCCW()) {
+        uiManager.navigateFaultInspection(1);
+        DEBUG_PRINTLN(F("[INPUT] Fault Inspection navigate forward"));
     }
 
-    // Update UI manager (non-blocking)
-    uiManager.update(stateMachine.getCurrentState());
-    
-    // Periodic debug output (every 5 seconds)
-    // #ifdef ENABLE_SERIAL_DEBUG
-    //     static unsigned long lastDebugTime = 0;
-    //     unsigned long currentTime = millis();
-        
-    //     if (currentTime - lastDebugTime >= 5000) {
-    //         Serial.println(F(""));
-    //         Serial.println(F("--- System Status ---"));
-            
-    //         // State machine status
-    //         Serial.print(F("Current State: "));
-    //         Serial.println(stateMachine.getStateName(stateMachine.getCurrentState()));
-            
-    //         // Fault status
-    //         if (stateMachine.getActiveFaults() != FAULT_NONE) {
-    //             Serial.print(F("Active Faults: 0x"));
-    //             Serial.print(stateMachine.getActiveFaults(), HEX);
-    //             Serial.print(F(" ("));
-    //             Serial.print(stateMachine.getFaultCount());
-    //             Serial.println(F(" fault(s))"));
-    //         }
-            
-    //         // Temperature sensor status
-    //         Serial.print(F("Temperature: "));
-    //         if (sensorManager.isTemperatureSensorOperational()) {
-    //             Serial.print(sensorManager.getTemperature(), 1);
-    //             Serial.println(F(" °C"));
-    //         } else {
-    //             Serial.println(F("SENSOR FAULT"));
-    //         }
-            
-    //         // Water level sensor status
-    //         Serial.print(F("Water Level: "));
-    //         Serial.println(sensorManager.isWaterLevelSufficient() ? F("Sufficient") : F("Insufficient"));
-            
-    //         if (sensorManager.hasWaterLevelFault()) {
-    //             Serial.println(F("  WATER LEVEL FAULT"));
-    //         }
-            
-    //         // Phase 5: Safety System Status
-    //         Serial.println(F(""));
-    //         Serial.println(F("--- Phase 5: Safety System Status ---"));
-            
-    //         // Circulation status
-    //         Serial.print(F("Circulation: "));
-    //         if (safetySystem.isCirculationStarted()) {
-    //             Serial.println(F("STARTED (pump running)"));
-    //         } else if (safetySystem.isCirculationSelected()) {
-    //             unsigned long remaining = safetySystem.getCirculationCountdownRemaining();
-    //             Serial.print(F("SELECTED (countdown: "));
-    //             Serial.print(remaining);
-    //             Serial.println(F(" ms)"));
-    //         } else {
-    //             Serial.println(F("STOPPED"));
-    //         }
-            
-    //         // Heater status
-    //         Serial.print(F("Heater: "));
-    //         if (safetySystem.isHeaterActive()) {
-    //             Serial.print(F("ACTIVE (target: "));
-    //             Serial.print(safetySystem.getTargetTemperature(), 1);
-    //             Serial.println(F(" °C)"));
-    //         } else {
-    //             Serial.print(F("INACTIVE (auto-start: "));
-    //             Serial.print(safetySystem.isHeaterAutoStartEnabled() ? F("ENABLED") : F("DISABLED"));
-    //             Serial.println(F(")"));
-    //         }
-            
-    //         // Target temperature
-    //         Serial.print(F("Target Temperature: "));
-    //         Serial.print(safetySystem.getTargetTemperature(), 1);
-    //         Serial.println(F(" °C"));
-            
-    //         // Feature status (massage, jet, ozone, speaker, lights)
-    //         Serial.print(F("Massage: "));
-    //         Serial.println(safetySystem.isFeatureActive(RELAY_CHANNEL_MASSAGE) ? F("ON") : F("OFF"));
-    //         Serial.print(F("Jet: "));
-    //         Serial.println(safetySystem.isFeatureActive(RELAY_CHANNEL_JET) ? F("ON") : F("OFF"));
-    //         Serial.print(F("Ozone: "));
-    //         Serial.println(safetySystem.isFeatureActive(RELAY_CHANNEL_OZONE) ? F("ON") : F("OFF"));
-    //         Serial.print(F("Speaker: "));
-    //         Serial.println(safetySystem.isFeatureActive(RELAY_CHANNEL_SPEAKER) ? F("ON") : F("OFF"));
-    //         Serial.print(F("Lights: "));
-    //         Serial.println(safetySystem.isFeatureActive(RELAY_CHANNEL_LIGHTS) ? F("ON") : F("OFF"));
-            
-    //         // Thermal runaway acknowledgment status
-    //         if (safetySystem.isThermalRunawayAcknowledgmentRequired()) {
-    //             Serial.println(F(""));
-    //             Serial.println(F("⚠️  THERMAL RUNAWAY REQUIRES MANUAL ACKNOWLEDGMENT"));
-    //         }
-            
-    //         Serial.println(F(""));
-            
-    //         lastDebugTime = currentTime;
-    //     }
-    // #endif
-    
-    // Event loop will be populated in subsequent phases
-    // Non-blocking architecture - NO delay() calls
-    
-    // Phase 3: Relay control and I2C bus management
-    // Phase 4: State machine implementation
-    // Phase 5: Safety system
-    // Phase 6: User interface - Display
-    // Phase 7: User interface - Input
-    // Phase 8: Buzzer and audible feedback
-    // Phase 9: Feature control and sequencing
-    // Phase 10: Integration testing and validation
+    if (inputHandler.wasButtonPressed() || inputHandler.isButtonHeld()) {
+        DEBUG_PRINTLN(F("[INPUT] Fault Inspection - returning to Fault UI"));
+        uiManager.forceUIState(UI_FAULT);
+    }
 }

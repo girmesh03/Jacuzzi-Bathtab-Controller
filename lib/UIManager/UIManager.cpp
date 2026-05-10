@@ -357,7 +357,7 @@ void UIManager::renderCurrentScreen() {
     if (denialMessage[0] != '\0') {
         int16_t msgWidth = strlen(denialMessage) * UI_GLYPH_SPACING;
         int16_t msgX = (DISPLAY_WIDTH - msgWidth) / 2;
-        int16_t msgY = 46;
+        int16_t msgY = 42;
         drawTextUnscaled(denialMessage, msgX, msgY);
     }
     
@@ -613,7 +613,7 @@ void UIManager::renderCirculationScreen() {
         const char* tempLabel = "Temperature";
         int16_t tempLabelWidth = strlen(tempLabel) * UI_GLYPH_SPACING;
         int16_t tempLabelX = (DISPLAY_WIDTH - tempLabelWidth) / 2;
-        int16_t tempLabelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 2;
+        int16_t tempLabelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 6;
         drawTextUnscaled(tempLabel, tempLabelX, tempLabelY);
 
         return;
@@ -722,7 +722,7 @@ void UIManager::renderCirculationScreen() {
     const char* displayLabel = (denialBottomLabel[0] != '\0') ? denialBottomLabel : itemLabel;
     int16_t labelWidth = strlen(displayLabel) * UI_GLYPH_SPACING;
     int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
-    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 6;
     drawTextUnscaled(displayLabel, labelX, labelY);
 }
 
@@ -1255,7 +1255,7 @@ void UIManager::renderWarningScreen() {
     const char* conditionText = "High Temperature";
     int16_t condWidth = strlen(conditionText) * UI_GLYPH_SPACING;
     int16_t condX = (DISPLAY_WIDTH - condWidth) / 2;
-    int16_t condY = DISPLAY_HEIGHT - UI_GLYPH_SPACING;
+    int16_t condY = DISPLAY_HEIGHT - UI_GLYPH_SPACING - 4;
     drawTextUnscaled(conditionText, condX, condY);
 }
 
@@ -1336,7 +1336,7 @@ void UIManager::renderFaultScreen() {
     // Overlay fault label at bottom center
     int16_t labelWidth = strlen(faultLabel) * UI_GLYPH_SPACING;
     int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
-    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 6;
     drawTextUnscaled(faultLabel, labelX, labelY);
     
     // Overlay fault count at top right if multiple faults
@@ -1425,7 +1425,7 @@ void UIManager::renderFaultInspectionScreen() {
     // Overlay fault label at bottom center
     int16_t labelWidth = strlen(faultLabel) * UI_GLYPH_SPACING;
     int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
-    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 6;
     drawTextUnscaled(faultLabel, labelX, labelY);
     
     // Overlay fault index at top right (e.g., "2/3")
