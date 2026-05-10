@@ -22,8 +22,7 @@ InputHandler::InputHandler()
       rotatedCW(false),
       rotatedCCW(false),
       buttonPressStartTime(0),
-      buttonWasPressed(false),
-      lastEncoderReadTime(0) {
+      buttonWasPressed(false) {
 }
 
 // ----------------------------------------------------------------------------

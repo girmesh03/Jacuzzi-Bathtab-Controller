@@ -31,6 +31,7 @@
 #include "SensorManager.h"
 #include "RelayController.h"
 #include "StateMachine.h"
+#include "I2CBusManager.h"
 
 // Forward declaration to avoid circular dependency
 class StateMachine;
@@ -38,7 +39,7 @@ class StateMachine;
 class SafetySystem {
 public:
     // Constructor
-    SafetySystem(SensorManager& sensors, RelayController& relays, StateMachine& stateMachine);
+    SafetySystem(SensorManager& sensors, RelayController& relays, StateMachine& stateMachine, I2CBusManager& i2cBus);
     
     // Initialization
     void begin();
@@ -228,6 +229,7 @@ private:
     SensorManager& sensorManager;
     RelayController& relayController;
     StateMachine& stateMachine;
+    I2CBusManager& i2cBusManager;
     
     // ------------------------------------------------------------------------
     // Circulation Pump State

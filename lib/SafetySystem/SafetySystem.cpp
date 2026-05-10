@@ -5,10 +5,11 @@
 // Constructor
 // ============================================================================
 
-SafetySystem::SafetySystem(SensorManager& sensors, RelayController& relays, StateMachine& sm)
+SafetySystem::SafetySystem(SensorManager& sensors, RelayController& relays, StateMachine& sm, I2CBusManager& i2cBus)
     : sensorManager(sensors),
       relayController(relays),
       stateMachine(sm),
+      i2cBusManager(i2cBus),
       circulationSelected(false),
       circulationStarted(false),
       circulationSelectTime(0),
@@ -799,8 +800,28 @@ void SafetySystem::detectTemperatureSensorFault() {
 }
 
 void SafetySystem::detectI2CFault() {
-    // I2C fault detection will be implemented when I2C bus manager provides status
-    // For now, this is a placeholder
+    // Rate-limited check: only probe every 5 seconds to avoid bus congestion
+    static unsigned long lastI2CCheck = 0;
+    unsigned long now = millis();
+    if (now - lastI2CCheck < 5000) {
+        return;
+    }
+    lastI2CCheck = now;
+
+    // Check both I2C devices — if neither responds, it's likely a bus-level fault
+    bool oledOK = i2cBusManager.isDeviceResponding(I2C_ADDRESS_OLED);
+    bool pcf8574OK = i2cBusManager.isDeviceResponding(I2C_ADDRESS_PCF8574);
+
+    if (!oledOK && !pcf8574OK) {
+        if (!stateMachine.hasFault(FAULT_I2C_FAILURE)) {
+            stateMachine.setFault(FAULT_I2C_FAILURE);
+
+            #ifdef ENABLE_SERIAL_DEBUG
+                Serial.println(F("[SAFETY] FAULT DETECTED: I2C bus failure"));
+                Serial.println(F("  Neither OLED nor PCF8574 responding"));
+            #endif
+        }
+    }
 }
 
 void SafetySystem::detectPCF8574Fault() {

@@ -110,8 +110,6 @@ private:
     unsigned long buttonPressStartTime;  // Time when button was first pressed
     bool buttonWasPressed;               // Track previous button state for edge detection
     
-    // Timing
-    unsigned long lastEncoderReadTime;
     
     // ------------------------------------------------------------------------
     // Private Methods

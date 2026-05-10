@@ -42,7 +42,7 @@ I2CBusManager i2cBus;
 RelayController relayController(i2cBus);
 SensorManager sensorManager;
 StateMachine stateMachine(sensorManager, relayController, i2cBus);
-SafetySystem safetySystem(sensorManager, relayController, stateMachine);
+SafetySystem safetySystem(sensorManager, relayController, stateMachine, i2cBus);
 UIManager uiManager(sensorManager, safetySystem, stateMachine);
 InputHandler inputHandler;
 BuzzerController buzzer;
@@ -294,7 +294,10 @@ static void handleBuzzerEvents();
 // Loop Function
 // ============================================================================
 void loop() {
+    yield();  // Feed ESP8266 watchdog timer
+
     sensorManager.update();
+    i2cBus.update();
     relayController.update();
     stateMachine.update();
     safetySystem.update();

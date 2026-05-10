@@ -45,6 +45,9 @@ public:
     bool verifyDevice(uint8_t address);
     bool isDeviceResponding(uint8_t address);
     
+    // Update (non-blocking) - call from main loop to handle stale lock detection
+    void update();
+
     // Priority management
     void setPriority(bool highPriority);
     bool isHighPriority() const;

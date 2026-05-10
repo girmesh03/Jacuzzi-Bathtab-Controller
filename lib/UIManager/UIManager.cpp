@@ -729,7 +729,7 @@ void UIManager::renderCirculationScreen() {
             int ci = 0;
             if (secondsRemaining >= 10) countdownStr[ci++] = '0' + (secondsRemaining / 10);
             countdownStr[ci++] = '0' + (secondsRemaining % 10);
-            countdownStr[ci] = 's';
+            countdownStr[ci++] = 's';
             countdownStr[ci] = '\0';
 
             drawTextUnscaled(countdownStr, 2, 2);
