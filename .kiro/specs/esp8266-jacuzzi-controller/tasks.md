@@ -323,7 +323,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Interaction: Encoder button press transitions to Main Menu UI
   - _Requirements: 9.7, 9.8_
 
-- [x] 37. Implement Main Menu UI screen
+- [-] 37. Implement Main Menu UI screen
   - Display: One item visible at a time
     - circulation_bitmap with bottom-centered label "Start" (bitmap glyphs)
     - settings_bitmap with bottom-centered label "Settings" (bitmap glyphs)
@@ -357,7 +357,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Purpose: Feature control during active bath operation
   - _Requirements: 9.7, 9.8_
 
-- [ ] 39. Implement Settings And Error UI screen
+- [x] 39. Implement Settings And Error UI screen
   - Layout: Same interaction style and constraints as Circulation UI
   - Display: One item visible at a time, scrollable list
   - Items: Configuration options, error history, system information (rendered as bitmap glyphs)
@@ -365,14 +365,14 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Purpose: System configuration and error review
   - _Requirements: 9.7, 9.8_
 
-- [ ] 40. Implement Warning UI overlay
+- [x] 40. Implement Warning UI overlay
   - Display: Warning indicator with high_temperature_error_bitmap or appropriate warning bitmap
   - Overlay: Warning displayed over current operational UI
   - Interaction: System continues operation, user can acknowledge warning
   - Purpose: Non-critical warnings that don't require shutdown
   - _Requirements: 9.9_
 
-- [ ] 41. Implement Fault UI screen
+- [x] 41. Implement Fault UI screen
   - Display: Fault indicator with specific error bitmap
     - low_water_level_error_bitmap for water level faults
     - high_temperature_error_bitmap for temperature faults
@@ -383,7 +383,7 @@ This implementation plan breaks down the ESP8266 Jacuzzi Controller firmware int
   - Purpose: Display active fault condition
   - _Requirements: 9.9, 9.10, 9.11_
 
-- [ ] 42. Implement Fault_Inspection UI screen
+- [x] 42. Implement Fault_Inspection UI screen
   - Display: Current fault with specific error bitmap
   - Fault navigation: Rotary left/right scrolls through active faults
   - Fault index: Current fault number and total count (bitmap glyphs, e.g., "Fault 2/3")

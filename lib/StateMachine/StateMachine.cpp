@@ -326,6 +326,18 @@ bool StateMachine::checkHeaterPreconditions() const {
 }
 
 // ============================================================================
+// Hardware Initialization Signaling
+// ============================================================================
+
+void StateMachine::setHardwareInitComplete() {
+    hardwareInitComplete = true;
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        Serial.println(F("[STATE] Hardware initialization complete signal received"));
+    #endif
+}
+
+// ============================================================================
 // State Transition Logic
 // ============================================================================
 

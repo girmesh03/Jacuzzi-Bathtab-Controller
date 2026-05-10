@@ -60,6 +60,9 @@ public:
     bool checkCirculationPreconditions() const;
     bool checkHeaterPreconditions() const;
     
+    // Hardware initialization signaling
+    void setHardwareInitComplete();
+    
 private:
     // Module references
     SensorManager& sensorManager;

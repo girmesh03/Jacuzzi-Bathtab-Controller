@@ -52,7 +52,7 @@ void SensorManager::begin()
 
     // Initialize temperature sensor state
     tempState = TEMP_IDLE;
-    currentTemperature = -999.0f; // Invalid initial value
+    currentTemperature = TEMP_INVALID_VALUE;
     lastTempReadTime = 0;
     tempRequestTime = 0;
     tempErrorCount = 0;
@@ -134,7 +134,9 @@ void SensorManager::updateTemperatureSensor()
             tempRequestTime = currentTime;
             tempState = TEMP_WAITING;
 
-            DEBUG_PRINTLN(F("[TEMP] Conversion requested"));
+            // DEBUG_PRINTLN(F("[TEMP] Conversion requested"));
+            // Temporarily disabled for clearer serial output
+            // Will be re-enabled after Phase 6/7 validation
         }
         break;
 
@@ -183,9 +185,13 @@ void SensorManager::updateTemperatureSensor()
 
 #ifdef ENABLE_SERIAL_DEBUG
             // Periodic temperature output (every read)
+            // Temporarily disabled for clearer serial output
+            // Will be re-enabled after Phase 6/7 validation
+            /*
             Serial.print(F("[TEMP] "));
             Serial.print(temp, 1);
             Serial.println(F(" °C"));
+            */
 #endif
         }
         else
@@ -372,7 +378,7 @@ float SensorManager::getTemperatureHistoryValue(uint8_t index) const
 {
     if (index >= historyCount)
     {
-        return -999.0f;  // Invalid index
+        return TEMP_INVALID_VALUE;
     }
     return temperatureHistory[index];
 }
@@ -381,7 +387,7 @@ float SensorManager::getOldestTemperature() const
 {
     if (historyCount == 0)
     {
-        return -999.0f;  // No history
+        return TEMP_INVALID_VALUE;
     }
     
     // If buffer not full, oldest is at index 0
@@ -398,7 +404,7 @@ float SensorManager::getNewestTemperature() const
 {
     if (historyCount == 0)
     {
-        return -999.0f;  // No history
+        return TEMP_INVALID_VALUE;
     }
     
     // Newest is always at (historyIndex - 1) wrapped around

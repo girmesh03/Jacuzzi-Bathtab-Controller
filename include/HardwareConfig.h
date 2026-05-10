@@ -26,7 +26,7 @@
 
 // Rotary encoder pins
 #define PIN_ENCODER_CLK 12  // D6/GPIO12 - Encoder CLK
-#define PIN_ENCODER_DT 17   // A0/ADC0/GPIO17 - Encoder DT ⚠️ VALIDATION REQUIRED in Phase 7
+#define PIN_ENCODER_DT 2    // D4/GPIO2 - Encoder DT (D0 reserved for heartbeat LED, D1/D2 are I2C)
 #define PIN_ENCODER_SW 0    // D3/GPIO0 - Encoder SW ⚠️ BOOT-STRAP SENSITIVE - needs pull-up
 
 // ----------------------------------------------------------------------------
@@ -58,6 +58,27 @@
 // Relay control constants
 #define RELAY_ALL_OFF 0xFF  // All relays OFF (active-low: all bits HIGH)
 #define RELAY_ALL_ON 0x00   // All relays ON (active-low: all bits LOW) - NEVER USE except for testing
+
+// ----------------------------------------------------------------------------
+// Display Configuration
+// ----------------------------------------------------------------------------
+
+#define DISPLAY_WIDTH 128        // OLED display width in pixels
+#define DISPLAY_HEIGHT 64        // OLED display height in pixels
+#define DISPLAY_RESET_PIN -1     // No reset pin connected (uses I2C)
+
+// ----------------------------------------------------------------------------
+// Serial Debug Configuration
+// ----------------------------------------------------------------------------
+
+#define SERIAL_BAUD_RATE 115200  // Serial debug baud rate
+#define SERIAL_WAIT_TIMEOUT_MS 3000  // Maximum wait time for serial connection (ms)
+
+// ----------------------------------------------------------------------------
+// Debug Timing
+// ----------------------------------------------------------------------------
+
+#define DEBUG_PRINT_INTERVAL_MS 5000  // Periodic debug output interval (ms)
 
 // ----------------------------------------------------------------------------
 // Hardware Notes

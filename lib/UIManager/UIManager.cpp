@@ -1,4 +1,6 @@
 #include "UIManager.h"
+#include "SafetySystem.h"  // Need full definition, not just forward declaration
+#include "StateMachine.h"  // Need full definition for fault management
 
 // ============================================================================
 // Debug Macros
@@ -12,21 +14,37 @@
 #endif
 
 // ============================================================================
+// UI Layout Constants
+// ============================================================================
+#define UI_STATUS_Y 2
+
+// ============================================================================
 // UIManager Implementation
 // ============================================================================
 
 // Constructor initializes display with I2C address
-UIManager::UIManager(SensorManager& sensors) 
+UIManager::UIManager(SensorManager& sensors, SafetySystem& safety, StateMachine& sm) 
     : sensorManager(sensors),
-      display(128, 64, &Wire, -1),  // 128x64 OLED, no reset pin
+      safetySystem(safety),
+      stateMachine(sm),
+      display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, DISPLAY_RESET_PIN),
       displayInitialized(false),
       currentUIState(UI_POWER_UP),
       previousUIState(UI_POWER_UP),
       uiStateEntryTime(0),
+      previousSystemState(STATE_BOOT),  // Initialize to Boot state
+      manualUIStateChange(false),  // No manual change initially
       needsRedraw(true),
       lastUpdateTime(0),
       mainMenuSelectedIndex(0),  // Default to Circulation (index 0)
-      circulationMenuSelectedIndex(0) {  // Default to Circulation pump (index 0)
+      circulationMenuSelectedIndex(0),  // Default to Circulation pump (index 0)
+      tempAdjustmentValue(0.0f),  // Will be initialized when thermometer selected
+      tempAdjustmentActive(false),  // Not adjusting temperature initially
+      faultInspectionIndex(0),  // Start at first fault
+      currentFaultDisplayIndex(0),  // Start at first fault
+      denialMessageEndTime(0) {
+    denialMessage[0] = '\0';
+    denialBottomLabel[0] = '\0';
 }
 
 // ----------------------------------------------------------------------------
@@ -77,6 +95,13 @@ void UIManager::update(SystemState currentSystemState) {
     // Non-blocking update at rate defined in TimingConfig.h
     unsigned long currentTime = millis();
     
+    // Check if denial message expired - force redraw to clear it
+    if (denialMessage[0] != '\0' && currentTime >= denialMessageEndTime) {
+        denialMessage[0] = '\0';
+        denialBottomLabel[0] = '\0';
+        needsRedraw = true;
+    }
+    
     if (currentTime - lastUpdateTime >= DISPLAY_UPDATE_INTERVAL_MS) {
         // Redraw if needed OR if we're in a state that should always show (Boot, Initialization)
         // This ensures splash screens are always visible
@@ -97,37 +122,149 @@ void UIManager::update(SystemState currentSystemState) {
 // ----------------------------------------------------------------------------
 
 void UIManager::updateUIState(SystemState systemState) {
-    UIState newUIState = currentUIState;
+    // CRITICAL FIX: Only auto-map UI state for states that have NO user navigation
+    // States WITH user navigation: Ready, Active_Circulation, Feature_Enabled_Bath, Fault
+    // States WITHOUT user navigation: Boot, Self_Check, Warning, Shutdown
+    //
+    // This prevents the system state from overriding user-driven UI navigation
     
-    // Map system state to UI state
+    // If UI state was manually changed (via forceUIState or navigation methods),
+    // skip auto-mapping for this frame
+    if (manualUIStateChange) {
+        manualUIStateChange = false;  // Clear flag
+        previousSystemState = systemState;  // Update tracking
+        return;  // Skip auto-mapping
+    }
+    
+    bool systemStateChanged = (systemState != previousSystemState);
+    
     switch (systemState) {
         case STATE_BOOT:
-            newUIState = UI_POWER_UP;
+            // Auto-map: No user navigation
+            if (currentUIState != UI_POWER_UP) {
+                previousUIState = currentUIState;
+                currentUIState = UI_POWER_UP;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] State changed: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINT(F(" -> "));
+                    DEBUG_PRINTLN((int)currentUIState);
+                #endif
+            }
             break;
             
         case STATE_SELF_CHECK:
-            newUIState = UI_INITIALIZATION;
+            // Auto-map: No user navigation
+            if (currentUIState != UI_INITIALIZATION) {
+                previousUIState = currentUIState;
+                currentUIState = UI_INITIALIZATION;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] State changed: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINT(F(" -> "));
+                    DEBUG_PRINTLN((int)currentUIState);
+                #endif
+            }
             break;
             
         case STATE_READY:
-            newUIState = UI_READY;
+            // User navigation: UI_READY ↔ UI_MAIN_MENU
+            // Do NOT auto-map - let user input control UI state
+            // Only set default if coming from a different system state
+            if (systemStateChanged) {
+                previousUIState = currentUIState;
+                currentUIState = UI_READY;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] System state changed to Ready, resetting to UI_READY"));
+                    DEBUG_PRINT(F(" (was: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINTLN(F(")"));
+                #endif
+            }
+            // Otherwise, keep current UI state (user is navigating)
             break;
             
         case STATE_ACTIVE_CIRCULATION:
         case STATE_FEATURE_ENABLED_BATH:
-            newUIState = UI_CIRCULATION;
+            // User navigation: UI_CIRCULATION (scrolling through items)
+            // Do NOT auto-map - let user input control menu position
+            // Only set if not already in Circulation UI
+            if (currentUIState != UI_CIRCULATION) {
+                previousUIState = currentUIState;
+                currentUIState = UI_CIRCULATION;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] State changed: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINT(F(" -> "));
+                    DEBUG_PRINTLN((int)currentUIState);
+                #endif
+            }
             break;
             
         case STATE_WARNING:
-            newUIState = UI_WARNING;
+            // Auto-map: No user navigation (warning overlay)
+            if (currentUIState != UI_WARNING) {
+                previousUIState = currentUIState;
+                currentUIState = UI_WARNING;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] State changed: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINT(F(" -> "));
+                    DEBUG_PRINTLN((int)currentUIState);
+                #endif
+            }
             break;
             
         case STATE_FAULT:
-            newUIState = UI_FAULT;
+            // User navigation: UI_FAULT ↔ UI_FAULT_INSPECTION
+            // Do NOT auto-map - let user input control
+            // Only set default if coming from a different system state
+            if (systemStateChanged && 
+                previousSystemState != STATE_FAULT_INSPECTION) {
+                previousUIState = currentUIState;
+                currentUIState = UI_FAULT;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] System state changed to Fault, setting UI_FAULT"));
+                    DEBUG_PRINT(F(" (was: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINTLN(F(")"));
+                #endif
+            }
             break;
             
         case STATE_FAULT_INSPECTION:
-            newUIState = UI_FAULT_INSPECTION;
+            // User navigation: Browsing faults
+            if (currentUIState != UI_FAULT_INSPECTION) {
+                previousUIState = currentUIState;
+                currentUIState = UI_FAULT_INSPECTION;
+                uiStateEntryTime = millis();
+                needsRedraw = true;
+                
+                #ifdef ENABLE_SERIAL_DEBUG
+                    DEBUG_PRINT(F("[UI] State changed: "));
+                    DEBUG_PRINT((int)previousUIState);
+                    DEBUG_PRINT(F(" -> "));
+                    DEBUG_PRINTLN((int)currentUIState);
+                #endif
+            }
             break;
             
         case STATE_SHUTDOWN:
@@ -135,15 +272,24 @@ void UIManager::updateUIState(SystemState systemState) {
             break;
     }
     
-    // Update UI state if changed
-    if (newUIState != currentUIState) {
+    // Update previous system state for next frame
+    previousSystemState = systemState;
+}
+
+// ----------------------------------------------------------------------------
+// Force UI State (Testing/Debugging Only)
+// ----------------------------------------------------------------------------
+
+void UIManager::forceUIState(UIState newState) {
+    if (newState != currentUIState) {
         previousUIState = currentUIState;
-        currentUIState = newUIState;
+        currentUIState = newState;
         uiStateEntryTime = millis();
-        needsRedraw = true;  // Force redraw on state change
+        needsRedraw = true;
+        manualUIStateChange = true;  // Mark as manual change
         
         #ifdef ENABLE_SERIAL_DEBUG
-            DEBUG_PRINT(F("[UI] State changed: "));
+            DEBUG_PRINT(F("[UI] FORCED state change: "));
             DEBUG_PRINT((int)previousUIState);
             DEBUG_PRINT(F(" -> "));
             DEBUG_PRINTLN((int)currentUIState);
@@ -187,21 +333,32 @@ void UIManager::renderCurrentScreen() {
             renderCirculationScreen();
             break;
             
-        case UI_SETTINGS_AND_ERROR:
-            // Future task - Settings And Error UI
-            break;
-            
         case UI_WARNING:
-            // Future task - Warning UI
+            // Task 40 - Warning UI
+            renderWarningScreen();
             break;
             
         case UI_FAULT:
-            // Future task - Fault UI
+            // Task 41 - Fault UI
+            renderFaultScreen();
             break;
             
         case UI_FAULT_INSPECTION:
-            // Future task - Fault Inspection UI
+            // Task 42 - Fault Inspection UI
+            renderFaultInspectionScreen();
             break;
+            
+        case UI_SETTINGS_AND_ERROR:
+            // Settings removed from Main Menu - this state is no longer reachable
+            break;
+    }
+    
+    // Draw denial message if active (in gap between bitmap and bottom label)
+    if (denialMessage[0] != '\0') {
+        int16_t msgWidth = strlen(denialMessage) * UI_GLYPH_SPACING;
+        int16_t msgX = (DISPLAY_WIDTH - msgWidth) / 2;
+        int16_t msgY = 46;
+        drawTextUnscaled(denialMessage, msgX, msgY);
     }
     
     // Commit display buffer to screen
@@ -259,12 +416,6 @@ void UIManager::renderPowerUpScreen() {
 // Text is positioned at the bottom for maximum visibility.
 
 void UIManager::renderInitializationScreen() {
-    // Requirement 9.17: Initialization/Safety UI
-    // - settings_bitmap SCALED DOWN by factor of 2 (128x64 → 64x32)
-    // - horizontally centered
-    // - positioned with space from top and bottom for text
-    // - text at bottom at NORMAL SIZE (8x8) for better readability
-    
     #ifdef ENABLE_SERIAL_DEBUG
         static bool firstRender = true;
         if (firstRender) {
@@ -273,36 +424,20 @@ void UIManager::renderInitializationScreen() {
         }
     #endif
     
-    // Scale down settings bitmap by factor of 2
-    int16_t sourceWidth = SETTINGS_BMPWIDTH;   // 128 pixels
-    int16_t sourceHeight = SETTINGS_BMPHEIGHT; // 64 pixels
-    int16_t scaledWidth = sourceWidth / 2;     // 64 pixels (scaled height will be 32 pixels)
+    int16_t sourceWidth = SETTINGS_BMPWIDTH;
+    int16_t sourceHeight = SETTINGS_BMPHEIGHT;
+    int16_t scaledWidth = sourceWidth / 2;
     
-    // Center horizontally: (128 - 64) / 2 = 32
-    int16_t bitmapX = (128 - scaledWidth) / 2;  // 32
-    
-    // Position bitmap with offset from top to leave space for text at bottom
-    // Display is 64 pixels tall, bitmap is 32 pixels tall, text is 8 pixels tall
-    // Layout: top margin (10px) + bitmap (32px) + spacing (4px) + text (8px) + bottom margin (10px) = 64px
+    int16_t bitmapX = (DISPLAY_WIDTH - scaledWidth) / 2;
     int16_t bitmapY = 10;
     
-    // Draw settings bitmap SCALED DOWN by factor of 2
     drawScaledBitmap(settings_bitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
     
-    // Display initialization status text (bitmap glyphs at NORMAL SIZE 8x8)
-    // Position text at bottom of screen
-    // Text Y position: 10 (top margin) + 32 (bitmap) + 4 (spacing) = 46
-    int16_t textY = 46;
-    
-    // "Checking..." is 11 characters
-    // At normal size: each char is 8 pixels wide + 2 pixels spacing = 10 pixels per char
-    // Total width: 11 × 10 = 110 pixels
-    // Center: (128 - 110) / 2 = 9
     const char* text = "Initializing";
-    int16_t textWidth = strlen(text) * 10;  // 10 pixels per char (8 + 2 spacing)
-    int16_t textX = (128 - textWidth) / 2;
+    int16_t textWidth = strlen(text) * UI_GLYPH_SPACING;
+    int16_t textX = (DISPLAY_WIDTH - textWidth) / 2;
+    int16_t textY = bitmapY + (sourceHeight / 2) + 4;
     
-    // Draw text at NORMAL SIZE (8x8) using unscaled method
     drawTextUnscaled(text, textX, textY);
 }
 
@@ -311,11 +446,6 @@ void UIManager::renderInitializationScreen() {
 // ----------------------------------------------------------------------------
 
 void UIManager::renderReadyScreen() {
-    // Requirement 9.18: Ready UI
-    // - Two-column layout
-    // - Left: thermometer_bitmap scaled by 2 (128x64 → 64x32)
-    // - Right: Numeric temperature with degree symbol (bitmap glyphs at normal size 8x8)
-    
     #ifdef ENABLE_SERIAL_DEBUG
         static bool firstRender = true;
         if (firstRender) {
@@ -323,74 +453,44 @@ void UIManager::renderReadyScreen() {
             firstRender = false;
         }
     #endif
-    
-    // Get current temperature from sensor manager
+
     float currentTemp = sensorManager.getTemperature();
-    
-    // Left column: Thermometer bitmap (scaled by 2)
-    int16_t sourceWidth = THERMOMETER_BMPWIDTH;   // 128 pixels
-    int16_t sourceHeight = THERMOMETER_BMPHEIGHT; // 64 pixels
-    int16_t scaledHeight = sourceHeight / 2;      // 32 pixels (scaled width will be 64 pixels)
-    
-    // Position thermometer bitmap on LEFT side
-    // Left margin: 0 pixels (flush left)
-    // Vertically centered: (64 - 32) / 2 = 16
-    int16_t bitmapX = 0;
-    int16_t bitmapY = (64 - scaledHeight) / 2;  // 16
-    
-    // Draw thermometer bitmap scaled down by factor of 2
-    drawScaledBitmap(thermometer_bitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
-    
-    // Right column: Temperature value with degree symbol
-    // Format: "38.5°C" at normal size (8x8 pixels)
-    
-    // Build temperature string manually
-    char tempStr[16];
-    int idx = 0;
-    
-    // Handle negative temperatures
+
+    // Left: Thermometer bitmap (scaled 64x32, flush left, vertically centered)
+    int16_t thermoY = (DISPLAY_HEIGHT - (THERMOMETER_BMPHEIGHT / 2)) / 2;
+    drawScaledBitmap(thermometer_bitmap, 0, thermoY,
+                     THERMOMETER_BMPWIDTH, THERMOMETER_BMPHEIGHT);
+
+    // Right: Temperature - integer part in 2x, decimal+unit unscaled
     bool isNegative = (currentTemp < 0);
     float absTemp = isNegative ? -currentTemp : currentTemp;
-    
-    if (isNegative) {
-        tempStr[idx++] = '-';
-    }
-    
-    // Convert to integer parts
     int wholePart = (int)absTemp;
     int decimalPart = (int)((absTemp - wholePart) * 10);
-    
-    // Build string: whole part
-    if (wholePart >= 10) {
-        tempStr[idx++] = '0' + (wholePart / 10);
-    }
-    tempStr[idx++] = '0' + (wholePart % 10);
-    
-    // Decimal point
-    tempStr[idx++] = '.';
-    
-    // Decimal part
-    tempStr[idx++] = '0' + decimalPart;
-    
-    // Degree symbol (°)
-    tempStr[idx++] = '\xB0';  // UTF-8 degree symbol
-    
-    // 'C'
-    tempStr[idx++] = 'C';
-    
-    // Null terminator
-    tempStr[idx] = '\0';
-    
-    // Position text on right side
-    // Right column starts after bitmap with small spacing
-    // Text X: 48 (small gap after thermometer)
-    int16_t textX = 48;
-    
-    // Vertically center text: (64 - 8) / 2 = 28
-    int16_t textY = (64 - 8) / 2;  // 28
-    
-    // Draw temperature text at NORMAL SIZE (8x8) using unscaled method
-    drawTextUnscaled(tempStr, textX, textY);
+
+    char intStr[4];
+    int pi = 0;
+    if (isNegative) intStr[pi++] = '-';
+    if (wholePart >= 10) intStr[pi++] = '0' + (wholePart / 10);
+    intStr[pi++] = '0' + (wholePart % 10);
+    intStr[pi] = '\0';
+
+    char decUnitStr[6];
+    int di = 0;
+    decUnitStr[di++] = '.';
+    decUnitStr[di++] = '0' + decimalPart;
+    decUnitStr[di++] = '\xB0';
+    decUnitStr[di++] = 'C';
+    decUnitStr[di] = '\0';
+
+    // 2x text partially overlaps right edge of scaled thermometer (which is mostly empty there)
+    int16_t intX = 50;
+    int16_t intY = 24;
+    drawText2x(intStr, intX, intY);
+
+    // Unscaled text right after 2x text
+    int16_t decX = intX + (strlen(intStr) * UI_GLYPH_2X_SPACING);
+    int16_t decY = intY + (GLYPH_HEIGHT / 2);
+    drawTextUnscaled(decUnitStr, decX, decY);
 }
 
 // ----------------------------------------------------------------------------
@@ -399,7 +499,7 @@ void UIManager::renderReadyScreen() {
 
 void UIManager::renderMainMenuScreen() {
     // Requirement 9.19: Main Menu UI
-    // - One item visible at a time (circulation_bitmap or settings_bitmap)
+    // - One item visible: circulation_bitmap with "Start" label
     // - Scaled by 2 (128x64 → 64x32)
     // - Bottom-centered bitmap-glyph labels
     // - Rotary left/right scrolls (Phase 7 - Input)
@@ -413,55 +513,23 @@ void UIManager::renderMainMenuScreen() {
         }
     #endif
     
-    // Determine which menu item to display based on selection
-    // mainMenuSelectedIndex: 0 = Circulation, 1 = Settings
-    const unsigned char* menuBitmap;
-    const char* menuLabel;
-    int16_t sourceWidth;
-    int16_t sourceHeight;
-    
-    if (mainMenuSelectedIndex == 0) {
-        // Circulation menu item
-        menuBitmap = circulation_bitmap;
-        menuLabel = "Start";
-        sourceWidth = CIRCULATION_BMPWIDTH;   // 128 pixels
-        sourceHeight = CIRCULATION_BMPHEIGHT; // 64 pixels
-    } else {
-        // Settings menu item
-        menuBitmap = settings_bitmap;
-        menuLabel = "Settings";
-        sourceWidth = SETTINGS_BMPWIDTH;   // 128 pixels
-        sourceHeight = SETTINGS_BMPHEIGHT; // 64 pixels
-    }
+    // Only one item: Circulation pump (Start)
+    const unsigned char* menuBitmap = circulation_bitmap;
+    const char* menuLabel = "Start";
+    int16_t sourceWidth = CIRCULATION_BMPWIDTH;   // 128 pixels
     
     // Scale down bitmap by factor of 2
     int16_t scaledWidth = sourceWidth / 2;   // 64 pixels
-    // Note: scaledHeight = sourceHeight / 2 = 32 pixels (not stored, calculated in drawScaledBitmap)
     
-    // Position bitmap
-    // Horizontally centered: (128 - 64) / 2 = 32
-    int16_t bitmapX = (128 - scaledWidth) / 2;  // 32
-    
-    // Vertically positioned with space at bottom for label
-    // Top offset: 8 pixels from top
+    int16_t bitmapX = (DISPLAY_WIDTH - scaledWidth) / 2;
     int16_t bitmapY = 8;
     
-    // Draw menu bitmap scaled down by factor of 2
-    drawScaledBitmap(menuBitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
+    drawScaledBitmap(menuBitmap, bitmapX, bitmapY, sourceWidth, CIRCULATION_BMPHEIGHT);
     
-    // Display label at bottom center (bitmap glyphs at normal size 8x8)
-    // Calculate label width for centering
-    // At normal size: each char is 8 pixels wide + 2 pixels spacing = 10 pixels per char
-    int16_t labelWidth = strlen(menuLabel) * 10;
+    int16_t labelWidth = strlen(menuLabel) * UI_GLYPH_SPACING;
+    int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 4;
     
-    // Position label at bottom center
-    // Label X: (128 - labelWidth) / 2 (centered)
-    int16_t labelX = (128 - labelWidth) / 2;
-    
-    // Label Y: 64 - 8 - 4 = 52 (4 pixels from bottom)
-    int16_t labelY = 64 - 8 - 4;  // 52
-    
-    // Draw label text at NORMAL SIZE (8x8) using unscaled method
     drawTextUnscaled(menuLabel, labelX, labelY);
 }
 
@@ -476,6 +544,8 @@ void UIManager::renderCirculationScreen() {
     // - All bitmaps scaled down by factor of 2
     // - Rotary left/right scrolls through items (Phase 7 - Input)
     // - Button press toggles selected item on/off (Phase 9 - Feature Control)
+    // - ON/OFF status displayed in top right corner
+    // - Thermometer screen shows temperature adjustment interface
     
     #ifdef ENABLE_SERIAL_DEBUG
         static bool firstRender = true;
@@ -488,20 +558,75 @@ void UIManager::renderCirculationScreen() {
         }
     #endif
     
-    // Define menu items (8 total)
-    // Index 0: Circulation pump
-    // Index 1: Massage pump
-    // Index 2: Jet pump
-    // Index 3: Water heater
-    // Index 4: Ozone generator
-    // Index 5: Light system
-    // Index 6: Speaker relay
-    // Index 7: Temperature display
+    // Special handling for thermometer screen (index 7)
+    if (circulationMenuSelectedIndex == 7) {
+        float displayTemp;
+        if (tempAdjustmentActive) {
+            displayTemp = tempAdjustmentValue;
+        } else {
+            displayTemp = safetySystem.getTargetTemperature();
+        }
+
+        // Left: Thermometer bitmap (scaled 64x32, flush left, vertically centered)
+        drawScaledBitmap(thermometer_bitmap, 0, (DISPLAY_HEIGHT - (THERMOMETER_BMPHEIGHT / 2)) / 2,
+                         THERMOMETER_BMPWIDTH, THERMOMETER_BMPHEIGHT);
+
+        // Right: Temperature - integer part in 2x, decimal+unit unscaled
+        bool isNegative = (displayTemp < 0);
+        float absTemp = isNegative ? -displayTemp : displayTemp;
+        int wholePart = (int)absTemp;
+        int decimalPart = (int)((absTemp - wholePart) * 10);
+
+        char intStr[4];
+        int pi = 0;
+        if (isNegative) intStr[pi++] = '-';
+        if (wholePart >= 10) intStr[pi++] = '0' + (wholePart / 10);
+        intStr[pi++] = '0' + (wholePart % 10);
+        intStr[pi] = '\0';
+
+        char decUnitStr[6];
+        int di = 0;
+        decUnitStr[di++] = '.';
+        decUnitStr[di++] = '0' + decimalPart;
+        decUnitStr[di++] = '\xB0';
+        decUnitStr[di++] = 'C';
+        decUnitStr[di] = '\0';
+
+        int16_t intX = 50;
+        int16_t intY = 24;
+        drawText2x(intStr, intX, intY);
+
+        int16_t decX = intX + (strlen(intStr) * UI_GLYPH_2X_SPACING);
+        int16_t decY = intY + (GLYPH_HEIGHT / 2);
+        drawTextUnscaled(decUnitStr, decX, decY);
+
+        // "Set" label at top right when adjusting
+        if (tempAdjustmentActive) {
+            const char* setLabel = "Set";
+            int16_t setWidth = strlen(setLabel) * UI_GLYPH_SPACING;
+            int16_t setX = DISPLAY_WIDTH - setWidth - 2;
+            int16_t setY = 2;
+            drawTextUnscaled(setLabel, setX, setY);
+        }
+
+        // "Temperature" label at bottom center
+        const char* tempLabel = "Temperature";
+        int16_t tempLabelWidth = strlen(tempLabel) * UI_GLYPH_SPACING;
+        int16_t tempLabelX = (DISPLAY_WIDTH - tempLabelWidth) / 2;
+        int16_t tempLabelY = DISPLAY_HEIGHT - GLYPH_HEIGHT - 2;
+        drawTextUnscaled(tempLabel, tempLabelX, tempLabelY);
+
+        return;
+    }
     
+    // Regular feature items (0-6): circulation, massage, jet, heater, ozone, lights, speaker
+    
+    // Define menu items (8 total)
     const unsigned char* itemBitmap;
     const char* itemLabel;
     int16_t sourceWidth;
     int16_t sourceHeight;
+    bool itemIsOn = false;  // Track if item is currently ON
     
     switch (circulationMenuSelectedIndex) {
         case 0:
@@ -510,6 +635,8 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Circulation";
             sourceWidth = CIRCULATION_BMPWIDTH;
             sourceHeight = CIRCULATION_BMPHEIGHT;
+            // CRITICAL FIX: Show ON if EITHER selected (countdown) OR started (running)
+            itemIsOn = safetySystem.isCirculationSelected() || safetySystem.isCirculationStarted();
             break;
             
         case 1:
@@ -518,6 +645,7 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Massage";
             sourceWidth = MASSAGE_BMPWIDTH;
             sourceHeight = MASSAGE_BMPHEIGHT;
+            itemIsOn = safetySystem.isFeatureActive(RELAY_CHANNEL_MASSAGE);
             break;
             
         case 2:
@@ -526,6 +654,7 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Jet";
             sourceWidth = JET_BMPWIDTH;
             sourceHeight = JET_BMPHEIGHT;
+            itemIsOn = safetySystem.isFeatureActive(RELAY_CHANNEL_JET);
             break;
             
         case 3:
@@ -534,6 +663,7 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Heater";
             sourceWidth = HEATER_BMPWIDTH;
             sourceHeight = HEATER_BMPHEIGHT;
+            itemIsOn = safetySystem.isHeaterActive();
             break;
             
         case 4:
@@ -542,30 +672,25 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Ozone";
             sourceWidth = OZONE_BMPWIDTH;
             sourceHeight = OZONE_BMPHEIGHT;
+            itemIsOn = safetySystem.isFeatureActive(RELAY_CHANNEL_OZONE);
             break;
             
         case 5:
-            // Light system
-            itemBitmap = light_bulb_bitmap;
-            itemLabel = "Lights";
-            sourceWidth = LIGHTBULB_BMPWIDTH;
-            sourceHeight = LIGHTBULB_BMPHEIGHT;
-            break;
-            
-        case 6:
             // Speaker relay
             itemBitmap = speaker_bitmap;
             itemLabel = "Speaker";
             sourceWidth = SPEAKER_BMPWIDTH;
             sourceHeight = SPEAKER_BMPHEIGHT;
+            itemIsOn = safetySystem.isFeatureActive(RELAY_CHANNEL_SPEAKER);
             break;
             
-        case 7:
-            // Temperature display
-            itemBitmap = thermometer_bitmap;
-            itemLabel = "Temperature";
-            sourceWidth = THERMOMETER_BMPWIDTH;
-            sourceHeight = THERMOMETER_BMPHEIGHT;
+        case 6:
+            // Light system
+            itemBitmap = light_bulb_bitmap;
+            itemLabel = "Lights";
+            sourceWidth = LIGHTBULB_BMPWIDTH;
+            sourceHeight = LIGHTBULB_BMPHEIGHT;
+            itemIsOn = safetySystem.isFeatureActive(RELAY_CHANNEL_LIGHTS);
             break;
             
         default:
@@ -574,42 +699,31 @@ void UIManager::renderCirculationScreen() {
             itemLabel = "Circulation";
             sourceWidth = CIRCULATION_BMPWIDTH;
             sourceHeight = CIRCULATION_BMPHEIGHT;
+            itemIsOn = safetySystem.isCirculationStarted();
             break;
     }
     
     // Scale down bitmap by factor of 2
-    int16_t scaledWidth = sourceWidth / 2;   // 64 pixels
-    // Note: scaledHeight = sourceHeight / 2 = 32 pixels (calculated in drawScaledBitmap)
-    
-    // Position bitmap
-    // Horizontally centered: (128 - 64) / 2 = 32
-    int16_t bitmapX = (128 - scaledWidth) / 2;  // 32
-    
-    // Vertically positioned with space at bottom for label
-    // Top offset: 8 pixels from top
+    int16_t scaledWidth = sourceWidth / 2;
+    int16_t bitmapX = (DISPLAY_WIDTH - scaledWidth) / 2;
     int16_t bitmapY = 8;
-    
+
     // Draw item bitmap scaled down by factor of 2
     drawScaledBitmap(itemBitmap, bitmapX, bitmapY, sourceWidth, sourceHeight);
-    
-    // Display label at bottom center (bitmap glyphs at normal size 8x8)
-    // Calculate label width for centering
-    // At normal size: each char is 8 pixels wide + 2 pixels spacing = 10 pixels per char
-    int16_t labelWidth = strlen(itemLabel) * 10;
-    
-    // Position label at bottom center
-    // Label X: (128 - labelWidth) / 2 (centered)
-    int16_t labelX = (128 - labelWidth) / 2;
-    
-    // Label Y: 64 - 8 - 4 = 52 (4 pixels from bottom)
-    int16_t labelY = 64 - 8 - 4;  // 52
-    
-    // Draw label text at NORMAL SIZE (8x8) using unscaled method
-    drawTextUnscaled(itemLabel, labelX, labelY);
-    
-    // TODO (Phase 9): Display on/off status indicator for each feature
-    // TODO (Phase 9): Display countdown for circulation delayed start
-    // TODO (Phase 9): Display temperature value when thermometer selected
+
+    // Display ON/OFF status in top right corner
+    const char* statusText = itemIsOn ? "ON" : "OFF";
+    int16_t statusWidth = strlen(statusText) * UI_GLYPH_SPACING;
+    int16_t statusX = DISPLAY_WIDTH - statusWidth - 2;
+    int16_t statusY = UI_STATUS_Y;
+    drawTextUnscaled(statusText, statusX, statusY);
+
+    // Display label at bottom - use denial replacement if active
+    const char* displayLabel = (denialBottomLabel[0] != '\0') ? denialBottomLabel : itemLabel;
+    int16_t labelWidth = strlen(displayLabel) * UI_GLYPH_SPACING;
+    int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    drawTextUnscaled(displayLabel, labelX, labelY);
 }
 
 // ----------------------------------------------------------------------------
@@ -683,7 +797,7 @@ void UIManager::drawText(const char* text, int16_t x, int16_t y) {
         drawScaledBitmap(glyphBitmap, cursorX, y, GLYPH_WIDTH, GLYPH_HEIGHT);
         
         // Advance cursor (scaled width + 1 pixel spacing)
-        cursorX += (GLYPH_WIDTH / 2) + 1;  // 4 pixels + 1 spacing = 5 pixels per char
+        cursorX += (UI_GLYPH_SPACING / 2);  // 5 pixels per char (scaled 8x8 → 4x4 + 1 spacing)
     }
 }
 
@@ -722,8 +836,7 @@ void UIManager::drawTextUnscaled(const char* text, int16_t x, int16_t y) {
             }
         }
         
-        // Advance cursor (8 pixels + 2 pixels spacing)
-        cursorX += GLYPH_WIDTH + 2;  // 10 pixels per char
+        cursorX += UI_GLYPH_SPACING;
     }
 }
 
@@ -766,8 +879,7 @@ void UIManager::drawText2x(const char* text, int16_t x, int16_t y) {
             }
         }
         
-        // Advance cursor (16 pixels + 4 pixels spacing)
-        cursorX += (GLYPH_WIDTH * 2) + 4;  // 20 pixels per char
+        cursorX += UI_GLYPH_2X_SPACING;
     }
 }
 
@@ -849,6 +961,111 @@ void UIManager::displayBuffer() {
 }
 
 // ----------------------------------------------------------------------------
+// Navigation Methods
+// ----------------------------------------------------------------------------
+
+void UIManager::navigateMainMenu(int8_t direction) {
+    // Only 1 item (Circulation), rotation has no effect
+    // Keep index at 0 always
+    mainMenuSelectedIndex = 0;
+}
+
+void UIManager::selectMainMenuItem() {
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINTLN(F("[UI] Main Menu select: Starting Circulation"));
+    #endif
+    
+    // Reset to Circulation item (index 0) when entering Circulation UI
+    circulationMenuSelectedIndex = 0;
+    
+    // Only one item: Circulation → Circulation UI
+    // System state transition is handled by main.cpp via SafetySystem
+    forceUIState(UI_CIRCULATION);
+}
+
+void UIManager::navigateCirculationMenu(int8_t direction) {
+    // Circulation menu has 8 items in SEQUENTIAL order
+    // CW order: Circulation(0) → Massage(1) → Jet(2) → Heater(3) → Ozone(4) → Speaker(5) → Light(6) → Thermometer(7)
+    // CCW order: Reverse of CW
+    
+    // Sequential navigation (0-7)
+    if (direction > 0) {
+        // Navigate CW (forward)
+        circulationMenuSelectedIndex = (circulationMenuSelectedIndex + 1) % 8;
+    } else if (direction < 0) {
+        // Navigate CCW (backward)
+        if (circulationMenuSelectedIndex == 0) {
+            circulationMenuSelectedIndex = 7;  // Wrap to last
+        } else {
+            circulationMenuSelectedIndex--;
+        }
+    }
+    
+    needsRedraw = true;
+    manualUIStateChange = true;  // Mark as manual change (menu navigation)
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Circulation Menu navigate: index = "));
+        DEBUG_PRINTLN(circulationMenuSelectedIndex);
+    #endif
+}
+
+void UIManager::showDenialMessage(const char* message, const char* bottomLabel) {
+    if (message == nullptr) return;
+    
+    // Safe string copy into fixed buffer
+    uint8_t i = 0;
+    while (message[i] != '\0' && i < sizeof(denialMessage) - 1) {
+        denialMessage[i] = message[i];
+        i++;
+    }
+    denialMessage[i] = '\0';
+    
+    // Copy optional bottom label replacement
+    denialBottomLabel[0] = '\0';
+    if (bottomLabel != nullptr) {
+        i = 0;
+        while (bottomLabel[i] != '\0' && i < sizeof(denialBottomLabel) - 1) {
+            denialBottomLabel[i] = bottomLabel[i];
+            i++;
+        }
+        denialBottomLabel[i] = '\0';
+    }
+    
+    denialMessageEndTime = millis() + DENIAL_MESSAGE_DURATION_MS;
+    needsRedraw = true;
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Denial message: "));
+        DEBUG_PRINT(denialMessage);
+        if (denialBottomLabel[0] != '\0') {
+            DEBUG_PRINT(F(", bottom label: "));
+            DEBUG_PRINT(denialBottomLabel);
+        }
+        DEBUG_PRINTLN(F(""));
+    #endif
+}
+
+void UIManager::toggleCirculationMenuItem() {
+    // Toggle current circulation menu item on/off
+    // Phase 9 will implement actual relay control
+    // For now, provides visual feedback only
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Circulation Menu toggle: index = "));
+        DEBUG_PRINTLN(circulationMenuSelectedIndex);
+    #endif
+    
+    // Note: Actual toggle logic is handled by main.cpp via SafetySystem
+    // This method is called from main.cpp when button is pressed
+    // The main.cpp code routes the toggle request to SafetySystem
+    
+    // Request redraw to show updated state
+    needsRedraw = true;
+    manualUIStateChange = true;  // Mark as manual change
+}
+
+// ----------------------------------------------------------------------------
 // Glyph Lookup
 // ----------------------------------------------------------------------------
 
@@ -868,5 +1085,359 @@ const unsigned char* UIManager::findGlyph(char c) {
     
     // Character not found
     return nullptr;
+}
+
+
+void UIManager::adjustTemperature(int8_t direction) {
+    // Adjust temperature on thermometer screen
+    // Only active when thermometer item (index 7) is selected
+    
+    if (circulationMenuSelectedIndex != 7) {
+        return;  // Not on thermometer screen
+    }
+    
+    // Initialize adjustment value if not already adjusting
+    if (!tempAdjustmentActive) {
+        tempAdjustmentActive = true;
+        tempAdjustmentValue = safetySystem.getTargetTemperature();
+    }
+    
+    // Adjust temperature using configurable increment from SafetyConfig.h
+    if (direction > 0) {
+        // Increase temperature
+        tempAdjustmentValue += TEMP_ADJUSTMENT_INCREMENT;
+        
+        // Limit to maximum safe temperature (from SafetyConfig.h)
+        if (tempAdjustmentValue > TEMP_WARNING_THRESHOLD) {
+            tempAdjustmentValue = TEMP_WARNING_THRESHOLD;
+        }
+    } else if (direction < 0) {
+        // Decrease temperature
+        tempAdjustmentValue -= TEMP_ADJUSTMENT_INCREMENT;
+        
+        if (tempAdjustmentValue < TEMP_ADJUSTMENT_MIN) {
+            tempAdjustmentValue = TEMP_ADJUSTMENT_MIN;
+        }
+    }
+    
+    needsRedraw = true;
+    manualUIStateChange = true;
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Temperature adjusted: "));
+        DEBUG_PRINT(tempAdjustmentValue);
+        DEBUG_PRINTLN(F(" °C"));
+    #endif
+}
+
+void UIManager::confirmTemperatureSetting() {
+    // Confirm temperature setting on thermometer screen
+    // Sets the adjusted temperature as the new target temperature
+    
+    if (circulationMenuSelectedIndex != 7 || !tempAdjustmentActive) {
+        return;  // Not on thermometer screen or not adjusting
+    }
+    
+    // Note: Actual temperature setting is handled by main.cpp via SafetySystem
+    // This method signals that the user wants to confirm the setting
+    // The main.cpp code will call safetySystem.setTargetTemperature()
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Temperature setting confirmed: "));
+        DEBUG_PRINT(tempAdjustmentValue);
+        DEBUG_PRINTLN(F(" °C"));
+    #endif
+    
+    // Reset adjustment state
+    tempAdjustmentActive = false;
+    needsRedraw = true;
+    manualUIStateChange = true;
+}
+
+void UIManager::navigateFaultInspection(int8_t direction) {
+    // Navigate through active faults in Fault Inspection UI
+    // Get fault count from state machine
+    uint8_t faultCount = stateMachine.getFaultCount();
+    
+    if (faultCount == 0) {
+        return;  // No faults to navigate
+    }
+    
+    // Navigate with wrapping
+    if (direction > 0) {
+        // Navigate right/next
+        faultInspectionIndex = (faultInspectionIndex + 1) % faultCount;
+    } else if (direction < 0) {
+        // Navigate left/previous
+        if (faultInspectionIndex == 0) {
+            faultInspectionIndex = faultCount - 1;  // Wrap to last
+        } else {
+            faultInspectionIndex--;
+        }
+    }
+    
+    needsRedraw = true;
+    manualUIStateChange = true;
+    
+    #ifdef ENABLE_SERIAL_DEBUG
+        DEBUG_PRINT(F("[UI] Fault Inspection navigate: index = "));
+        DEBUG_PRINT(faultInspectionIndex);
+        DEBUG_PRINT(F(" / "));
+        DEBUG_PRINTLN(faultCount);
+    #endif
+}
+
+
+
+
+
+// ----------------------------------------------------------------------------
+// Task 40: Warning UI Screen
+// ----------------------------------------------------------------------------
+
+void UIManager::renderWarningScreen() {
+    #ifdef ENABLE_SERIAL_DEBUG
+        static bool firstRender = true;
+        if (firstRender) {
+            DEBUG_PRINTLN(F("[UI] Rendering Warning screen"));
+            firstRender = false;
+        }
+    #endif
+
+    // Draw error bitmap at FULL SIZE (128x64) covering entire screen
+    // No scaling - bitmaps are visible at native resolution
+    display.drawBitmap(0, 0, high_temperature_error_bitmap,
+                       HIGH_TEMPERATURE_ERROR_BMPWIDTH,
+                       HIGH_TEMPERATURE_ERROR_BMPHEIGHT,
+                       SH110X_WHITE);
+
+    // Overlay "WARNING" text centered on screen
+    const char* warningLabel = "WARNING";
+    int16_t warningWidth = strlen(warningLabel) * UI_GLYPH_SPACING;
+    int16_t warningX = (DISPLAY_WIDTH - warningWidth) / 2;
+    int16_t warningY = 16;
+    drawTextUnscaled(warningLabel, warningX, warningY);
+
+    // Overlay temperature value centered below WARNING
+    float currentTemp = sensorManager.getTemperature();
+
+    char tempStr[16];
+    int idx = 0;
+
+    bool isNegative = (currentTemp < 0);
+    float absTemp = isNegative ? -currentTemp : currentTemp;
+
+    if (isNegative) {
+        tempStr[idx++] = '-';
+    }
+
+    int wholePart = (int)absTemp;
+    int decimalPart = (int)((absTemp - wholePart) * 10);
+
+    if (wholePart >= 10) {
+        tempStr[idx++] = '0' + (wholePart / 10);
+    }
+    tempStr[idx++] = '0' + (wholePart % 10);
+
+    tempStr[idx++] = '.';
+    tempStr[idx++] = '0' + decimalPart;
+
+    tempStr[idx++] = '\xB0';
+    tempStr[idx++] = 'C';
+    tempStr[idx] = '\0';
+
+    int16_t tempWidth = strlen(tempStr) * UI_GLYPH_SPACING;
+    int16_t tempX = (DISPLAY_WIDTH - tempWidth) / 2;
+    int16_t tempY = warningY + UI_GLYPH_SPACING;
+    drawTextUnscaled(tempStr, tempX, tempY);
+
+    // Draw condition text at bottom
+    const char* conditionText = "High Temperature";
+    int16_t condWidth = strlen(conditionText) * UI_GLYPH_SPACING;
+    int16_t condX = (DISPLAY_WIDTH - condWidth) / 2;
+    int16_t condY = DISPLAY_HEIGHT - UI_GLYPH_SPACING;
+    drawTextUnscaled(conditionText, condX, condY);
+}
+
+// ----------------------------------------------------------------------------
+// Task 41: Fault UI Screen
+// ----------------------------------------------------------------------------
+
+void UIManager::renderFaultScreen() {
+    #ifdef ENABLE_SERIAL_DEBUG
+        static bool firstRender = true;
+        if (firstRender) {
+            DEBUG_PRINTLN(F("[UI] Rendering Fault screen"));
+            firstRender = false;
+        }
+    #endif
+    
+    uint8_t activeFaults = stateMachine.getActiveFaults();
+    
+    uint8_t faultCount = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        if (activeFaults & (1 << i)) {
+            faultCount++;
+        }
+    }
+    
+    const char* faultLabel;
+    uint8_t currentFault = 0;
+    
+    if (activeFaults & FAULT_LOW_WATER_LEVEL) {
+        faultLabel = "Low Water";
+        currentFault = FAULT_LOW_WATER_LEVEL;
+    } else if (activeFaults & FAULT_HIGH_TEMPERATURE) {
+        faultLabel = "High Temp";
+        currentFault = FAULT_HIGH_TEMPERATURE;
+    } else if (activeFaults & FAULT_THERMAL_RUNAWAY) {
+        faultLabel = "Thermal Runaway";
+        currentFault = FAULT_THERMAL_RUNAWAY;
+    } else if (activeFaults & FAULT_TEMPERATURE_SENSOR) {
+        faultLabel = "Temp Sensor";
+        currentFault = FAULT_TEMPERATURE_SENSOR;
+    } else if (activeFaults & FAULT_I2C_FAILURE) {
+        faultLabel = "I2C Failure";
+        currentFault = FAULT_I2C_FAILURE;
+    } else if (activeFaults & FAULT_PCF8574_FAILURE) {
+        faultLabel = "Relay Failure";
+        currentFault = FAULT_PCF8574_FAILURE;
+    } else {
+        faultLabel = "Unknown Fault";
+        currentFault = 0;
+    }
+    
+    // Calculate current fault index
+    uint8_t currentFaultIndex = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        uint8_t faultBit = (1 << i);
+        if (activeFaults & faultBit) {
+            if (faultBit == currentFault) break;
+            currentFaultIndex++;
+        }
+    }
+    currentFaultDisplayIndex = currentFaultIndex;
+    
+    // Draw error bitmap at FULL SIZE (fills entire screen)
+    if (currentFault == FAULT_LOW_WATER_LEVEL) {
+        display.drawBitmap(0, 0, low_water_level_error_bitmap,
+                           LOW_WATER_LEVEL_ERROR_BMPWIDTH,
+                           LOW_WATER_LEVEL_ERROR_BMPHEIGHT, SH110X_WHITE);
+    } else if (currentFault == FAULT_HIGH_TEMPERATURE || currentFault == FAULT_THERMAL_RUNAWAY) {
+        display.drawBitmap(0, 0, high_temperature_error_bitmap,
+                           HIGH_TEMPERATURE_ERROR_BMPWIDTH,
+                           HIGH_TEMPERATURE_ERROR_BMPHEIGHT, SH110X_WHITE);
+    } else {
+        display.drawBitmap(0, 0, sensor_error_bitmap,
+                           SENSOR_ERROR_BMPWIDTH,
+                           SENSOR_ERROR_BMPHEIGHT, SH110X_WHITE);
+    }
+    
+    // Overlay fault label at bottom center
+    int16_t labelWidth = strlen(faultLabel) * UI_GLYPH_SPACING;
+    int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    drawTextUnscaled(faultLabel, labelX, labelY);
+    
+    // Overlay fault count at top right if multiple faults
+    if (faultCount > 1) {
+        char countStr[8];
+        countStr[0] = '0' + (currentFaultIndex + 1);
+        countStr[1] = '/';
+        countStr[2] = '0' + faultCount;
+        countStr[3] = '\0';
+        
+        int16_t countWidth = strlen(countStr) * UI_GLYPH_SPACING;
+        int16_t countX = DISPLAY_WIDTH - countWidth - 2;
+        int16_t countY = 2;
+        drawTextUnscaled(countStr, countX, countY);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Task 42: Fault Inspection UI Screen
+// ----------------------------------------------------------------------------
+
+void UIManager::renderFaultInspectionScreen() {
+    #ifdef ENABLE_SERIAL_DEBUG
+        static bool firstRender = true;
+        if (firstRender) {
+            DEBUG_PRINTLN(F("[UI] Rendering Fault Inspection screen"));
+            firstRender = false;
+        }
+    #endif
+    
+    uint8_t activeFaults = stateMachine.getActiveFaults();
+    
+    uint8_t faultList[8];
+    uint8_t faultCount = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        if (activeFaults & (1 << i)) {
+            faultList[faultCount++] = (1 << i);
+        }
+    }
+    
+    if (faultCount == 0) {
+        const char* label = "No Faults";
+        int16_t labelWidth = strlen(label) * UI_GLYPH_SPACING;
+        int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
+        int16_t labelY = (DISPLAY_HEIGHT - GLYPH_HEIGHT) / 2;
+        drawTextUnscaled(label, labelX, labelY);
+        return;
+    }
+    
+    uint8_t currentFaultIndex = faultInspectionIndex;
+    if (currentFaultIndex >= faultCount) {
+        currentFaultIndex = 0;
+    }
+    
+    uint8_t currentFault = faultList[currentFaultIndex];
+    
+    const unsigned char* faultBitmap;
+    const char* faultLabel;
+    
+    if (currentFault == FAULT_LOW_WATER_LEVEL) {
+        faultBitmap = low_water_level_error_bitmap;
+        faultLabel = "Low Water";
+    } else if (currentFault == FAULT_HIGH_TEMPERATURE) {
+        faultBitmap = high_temperature_error_bitmap;
+        faultLabel = "High Temp";
+    } else if (currentFault == FAULT_THERMAL_RUNAWAY) {
+        faultBitmap = high_temperature_error_bitmap;
+        faultLabel = "Thermal Runaway";
+    } else if (currentFault == FAULT_TEMPERATURE_SENSOR) {
+        faultBitmap = sensor_error_bitmap;
+        faultLabel = "Temp Sensor";
+    } else if (currentFault == FAULT_I2C_FAILURE) {
+        faultBitmap = sensor_error_bitmap;
+        faultLabel = "I2C Failure";
+    } else if (currentFault == FAULT_PCF8574_FAILURE) {
+        faultBitmap = sensor_error_bitmap;
+        faultLabel = "Relay Failure";
+    } else {
+        faultBitmap = sensor_error_bitmap;
+        faultLabel = "Unknown Fault";
+    }
+    
+    // Draw error bitmap at FULL SIZE (fills entire screen)
+    display.drawBitmap(0, 0, faultBitmap, DISPLAY_WIDTH, DISPLAY_HEIGHT, SH110X_WHITE);
+    
+    // Overlay fault label at bottom center
+    int16_t labelWidth = strlen(faultLabel) * UI_GLYPH_SPACING;
+    int16_t labelX = (DISPLAY_WIDTH - labelWidth) / 2;
+    int16_t labelY = DISPLAY_HEIGHT - GLYPH_HEIGHT;
+    drawTextUnscaled(faultLabel, labelX, labelY);
+    
+    // Overlay fault index at top right (e.g., "2/3")
+    char indexStr[8];
+    indexStr[0] = '0' + (currentFaultIndex + 1);
+    indexStr[1] = '/';
+    indexStr[2] = '0' + faultCount;
+    indexStr[3] = '\0';
+    
+    int16_t indexWidth = strlen(indexStr) * UI_GLYPH_SPACING;
+    int16_t indexX = DISPLAY_WIDTH - indexWidth - 2;
+    int16_t indexY = 2;
+    drawTextUnscaled(indexStr, indexX, indexY);
 }
 

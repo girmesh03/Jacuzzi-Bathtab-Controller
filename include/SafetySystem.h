@@ -250,6 +250,12 @@ private:
     bool hasUserTargetTemperature;         // Flag indicating user has set target
     
     // ------------------------------------------------------------------------
+    // Debug State Tracking
+    // ------------------------------------------------------------------------
+    
+    bool lastHeaterPreconditionsMet;       // Previous precondition check result (for transition-based debug printing)
+    
+    // ------------------------------------------------------------------------
     // Thermal Runaway Detection
     // ------------------------------------------------------------------------
     

@@ -8,6 +8,10 @@
 #include "Bitmaps.h"
 #include "SensorManager.h"
 
+// Forward declaration to avoid circular dependency
+class SafetySystem;
+class StateMachine;
+
 // ============================================================================
 // UIManager - Bitmap-Only Display Management
 // ============================================================================
@@ -20,9 +24,9 @@
 // - Power-Up UI: Boot splash screen (water_drop_bitmap, 3+ seconds)
 // - Initialization/Safety UI: Self-check progress (settings_bitmap + status text)
 // - Ready UI: Temperature display (thermometer_bitmap + numeric value)
-// - Main Menu UI: Navigation menu (circulation/settings selection)
+// - Main Menu UI: Start circulation
 // - Circulation UI: Feature control (scrollable feature list)
-// - Settings And Error UI: Settings and error review
+
 // - Warning UI: Warning overlay
 // - Fault UI: Fault display (error bitmaps)
 // - Fault_Inspection UI: Multi-fault browsing
@@ -35,7 +39,7 @@ enum UIState {
     UI_READY,                 // Ready screen (STATE_READY)
     UI_MAIN_MENU,             // Main menu navigation
     UI_CIRCULATION,           // Feature control (STATE_ACTIVE_CIRCULATION, STATE_FEATURE_ENABLED_BATH)
-    UI_SETTINGS_AND_ERROR,    // Settings and error review
+    UI_SETTINGS_AND_ERROR,    // (reserved, not used)
     UI_WARNING,               // Warning overlay (STATE_WARNING)
     UI_FAULT,                 // Fault display (STATE_FAULT)
     UI_FAULT_INSPECTION       // Multi-fault browsing (STATE_FAULT_INSPECTION)
@@ -46,7 +50,7 @@ public:
     // ------------------------------------------------------------------------
     // Constructor
     // ------------------------------------------------------------------------
-    UIManager(SensorManager& sensors);
+    UIManager(SensorManager& sensors, SafetySystem& safety, StateMachine& stateMachine);
     
     // ------------------------------------------------------------------------
     // Public Methods
@@ -78,17 +82,26 @@ public:
     void requestRedraw() { needsRedraw = true; }
     
     /**
+     * @brief Force UI state change (for testing/debugging only)
+     * @param newState New UI state to display
+     * 
+     * CRITICAL: This bypasses normal state machine logic
+     * Use only for Phase 6/7 testing before full state machine integration
+     */
+    void forceUIState(UIState newState);
+    
+    /**
      * @brief Get current main menu selected index
-     * @return 0 = Circulation, 1 = Settings
+     * @return 0 = Circulation
      */
     uint8_t getMainMenuSelectedIndex() const { return mainMenuSelectedIndex; }
     
     /**
      * @brief Set main menu selected index
-     * @param index 0 = Circulation, 1 = Settings
+     * @param index 0 = Circulation
      */
     void setMainMenuSelectedIndex(uint8_t index) {
-        if (index <= 1) {  // Only 2 menu items
+        if (index == 0) {  // Only 1 menu item (Circulation)
             mainMenuSelectedIndex = index;
             needsRedraw = true;
         }
@@ -98,16 +111,13 @@ public:
      * @brief Navigate main menu (left/right)
      * @param direction -1 = left, +1 = right
      */
-    void navigateMainMenu(int8_t direction) {
-        if (direction < 0) {
-            // Navigate left (wrap around)
-            mainMenuSelectedIndex = (mainMenuSelectedIndex == 0) ? 1 : 0;
-        } else if (direction > 0) {
-            // Navigate right (wrap around)
-            mainMenuSelectedIndex = (mainMenuSelectedIndex == 1) ? 0 : 1;
-        }
-        needsRedraw = true;
-    }
+    void navigateMainMenu(int8_t direction);
+    
+    /**
+     * @brief Select current main menu item
+     * Transitions to Circulation UI
+     */
+    void selectMainMenuItem();
     
     /**
      * @brief Get current circulation menu selected index
@@ -130,16 +140,73 @@ public:
      * @brief Navigate circulation menu (left/right)
      * @param direction -1 = left/up, +1 = right/down
      */
-    void navigateCirculationMenu(int8_t direction) {
-        if (direction < 0) {
-            // Navigate up (wrap around)
-            circulationMenuSelectedIndex = (circulationMenuSelectedIndex == 0) ? 7 : (circulationMenuSelectedIndex - 1);
-        } else if (direction > 0) {
-            // Navigate down (wrap around)
-            circulationMenuSelectedIndex = (circulationMenuSelectedIndex == 7) ? 0 : (circulationMenuSelectedIndex + 1);
-        }
-        needsRedraw = true;
-    }
+    void navigateCirculationMenu(int8_t direction);
+    
+    /**
+     * @brief Adjust temperature on thermometer screen
+     * @param direction -1 = decrease, +1 = increase
+     * 
+     * Only active when thermometer item (index 7) is selected
+     * Adjusts temperature in 0.5°C increments
+     */
+    void adjustTemperature(int8_t direction);
+    
+    /**
+     * @brief Confirm temperature setting on thermometer screen
+     * 
+     * Sets the adjusted temperature as the new target temperature
+     * Only active when thermometer item (index 7) is selected
+     */
+    void confirmTemperatureSetting();
+    
+    /**
+     * @brief Get adjusted temperature value
+     * @return Current temperature being adjusted (only valid when tempAdjustmentActive)
+     */
+    float getAdjustedTemperature() const { return tempAdjustmentValue; }
+    
+    /**
+     * @brief Check if temperature adjustment is active
+     * @return true if user is currently adjusting temperature
+     */
+    bool isTemperatureAdjustmentActive() const { return tempAdjustmentActive; }
+    
+    /**
+     * @brief Show a denial message overlay on screen
+     * @param message Brief text shown between bitmap and label (e.g., "Start")
+     * @param bottomLabel Optional replacement text for bottom feature label (e.g., "Circulation")
+     * Message(s) appear for DENIAL_MESSAGE_DURATION_MS then clear
+     */
+    void showDenialMessage(const char* message, const char* bottomLabel = nullptr);
+    
+    /**
+     * @brief Toggle current circulation menu item on/off
+     * Phase 9 will implement actual relay control
+     * For now, provides visual feedback only
+     */
+    void toggleCirculationMenuItem();
+    
+    /**
+     * @brief Navigate fault inspection (left/right)
+     * @param direction -1 = left/previous, +1 = right/next
+     * 
+     * Scrolls through active faults in Fault Inspection UI
+     */
+    void navigateFaultInspection(int8_t direction);
+    
+    /**
+     * @brief Get current fault inspection index
+     * @return Current fault being inspected (0-based)
+     */
+    uint8_t getFaultInspectionIndex() const { return faultInspectionIndex; }
+    
+    /**
+     * @brief Reset fault inspection index to 0
+     * Called when entering Fault Inspection UI
+     */
+    void resetFaultInspectionIndex() { faultInspectionIndex = 0; needsRedraw = true; }
+    
+
     
     /**
      * @brief Draw bitmap scaled down by factor of 2
@@ -222,6 +289,8 @@ private:
     
     // Module references
     SensorManager& sensorManager;
+    SafetySystem& safetySystem;
+    StateMachine& stateMachine;
     
     // Display instance
     Adafruit_SH1106G display;
@@ -234,6 +303,12 @@ private:
     UIState previousUIState;
     unsigned long uiStateEntryTime;
     
+    // System state tracking (for detecting system state changes)
+    SystemState previousSystemState;
+    
+    // Manual UI state change tracking
+    bool manualUIStateChange;
+    
     // Display refresh control
     bool needsRedraw;
     
@@ -241,10 +316,25 @@ private:
     unsigned long lastUpdateTime;
     
     // Main Menu UI state
-    uint8_t mainMenuSelectedIndex;  // 0 = Circulation, 1 = Settings
+    uint8_t mainMenuSelectedIndex;  // 0 = Circulation
     
     // Circulation UI state
     uint8_t circulationMenuSelectedIndex;  // 0-7: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
+    
+    // Temperature adjustment state (for thermometer screen)
+    float tempAdjustmentValue;  // Current temperature being adjusted
+    bool tempAdjustmentActive;  // True when user is adjusting temperature
+    
+    // Fault inspection state
+    uint8_t faultInspectionIndex;  // Current fault being inspected (0-based)
+    
+    // Fault display state
+    uint8_t currentFaultDisplayIndex;  // Current fault being displayed on Fault UI (0-based)
+    
+    // Denial message overlay state
+    char denialMessage[24];      // Message buffer for denial feedback (shown between bitmap and label)
+    char denialBottomLabel[24];  // Replacement bottom label during denial (e.g., "Circulation")
+    unsigned long denialMessageEndTime;  // millis() when message expires
     
     // ------------------------------------------------------------------------
     // Private Methods
@@ -288,7 +378,7 @@ private:
     
     /**
      * @brief Render Main Menu UI screen (Task 37)
-     * circulation_bitmap or settings_bitmap with labels
+     * circulation_bitmap with "Start" label
      */
     void renderMainMenuScreen();
     
@@ -297,5 +387,26 @@ private:
      * Scrollable list of features: circulation, massage, jet, heater, ozone, lights, speaker, thermometer
      */
     void renderCirculationScreen();
+    
+    /**
+     * @brief Render Warning UI overlay (Task 40)
+     * Warning indicator with high_temperature_error_bitmap
+     * Non-critical warnings that don't require shutdown
+     */
+    void renderWarningScreen();
+    
+    /**
+     * @brief Render Fault UI screen (Task 41)
+     * Fault indicator with specific error bitmap
+     * Displays highest priority fault with fault count if multiple
+     */
+    void renderFaultScreen();
+    
+    /**
+     * @brief Render Fault Inspection UI screen (Task 42)
+     * Browse through multiple active faults
+     * Rotary left/right scrolls, displays fault index and total count
+     */
+    void renderFaultInspectionScreen();
 };
 

@@ -926,6 +926,8 @@ const unsigned char sensor_error_bitmap[] PROGMEM = {
 // Glyph dimensions
 #define GLYPH_WIDTH 8
 #define GLYPH_HEIGHT 8
+#define UI_GLYPH_SPACING (GLYPH_WIDTH + 2)   // 10px per character for unscaled text (8px glyph + 2px spacing)
+#define UI_GLYPH_2X_SPACING ((GLYPH_WIDTH * 2) + 4)  // 20px per character for 2x text (16px glyph + 4px spacing)
 
 // Glyph structure
 struct BitmapGlyph {

@@ -21,6 +21,9 @@
 
 // Heater control
 #define TEMP_DEFAULT_SETPOINT 38.0f  // Default heater target temperature (°C) when user hasn't set target
+#define TEMP_ADJUSTMENT_INCREMENT 1.0f  // Temperature adjustment increment (°C) for UI controls
+#define TEMP_ADJUSTMENT_MIN 20.0f    // Minimum user-adjustable temperature (°C)
+#define TEMP_INVALID_VALUE -999.0f   // Sentinel value for invalid temperature reading
 
 // ----------------------------------------------------------------------------
 // Thermal Runaway Detection

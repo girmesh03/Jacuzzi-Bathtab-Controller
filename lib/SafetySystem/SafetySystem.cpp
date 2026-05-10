@@ -19,6 +19,7 @@ SafetySystem::SafetySystem(SensorManager& sensors, RelayController& relays, Stat
       heaterAutoStartTime(0),
       userTargetTemperature(0.0f),
       hasUserTargetTemperature(false),
+      lastHeaterPreconditionsMet(true),  // Initialized to true so first failure prints
       thermalRunawayAcknowledged(false),
       lastThermalRunawayCheck(0) {
 }
@@ -71,9 +72,8 @@ void SafetySystem::update() {
     }
     
     // Process heater temperature control loop
-    if (heaterActive) {
-        processHeaterTemperatureControl();
-    }
+    // Always runs (not just when heaterActive) to handle reactivation when temp drops below setpoint
+    processHeaterTemperatureControl();
     
     // Detect faults (called automatically)
     detectFaults();
@@ -108,31 +108,41 @@ bool SafetySystem::checkHeaterPreconditions() {
     // ABSOLUTE RULE: Circulation pump MUST be actively running
     if (!circulationStarted) {
         #ifdef ENABLE_SERIAL_DEBUG
-            Serial.println(F("[SAFETY] Heater preconditions NOT met: Circulation not active (ABSOLUTE RULE)"));
+            if (lastHeaterPreconditionsMet) {
+                Serial.println(F("[SAFETY] Heater preconditions NOT met: Circulation not active (ABSOLUTE RULE)"));
+            }
         #endif
+        lastHeaterPreconditionsMet = false;
         return false;
     }
     
     // Check thermal runaway acknowledgment (Requirement 2.11, 19.5)
     if (stateMachine.hasFault(FAULT_THERMAL_RUNAWAY) && !thermalRunawayAcknowledged) {
         #ifdef ENABLE_SERIAL_DEBUG
-            Serial.println(F("[SAFETY] Heater preconditions NOT met: Thermal runaway requires manual acknowledgment"));
+            if (lastHeaterPreconditionsMet) {
+                Serial.println(F("[SAFETY] Heater preconditions NOT met: Thermal runaway requires manual acknowledgment"));
+            }
         #endif
+        lastHeaterPreconditionsMet = false;
         return false;
     }
     
     // Additional preconditions
+    float currentTemp = sensorManager.getTemperature();
+    bool tempValid = (currentTemp != TEMP_INVALID_VALUE);
     bool waterLevelOK = sensorManager.isWaterLevelSufficient();
-    bool tempBelowWarning = (sensorManager.getTemperature() < TEMP_WARNING_THRESHOLD);
+    bool tempBelowWarning = (currentTemp < TEMP_WARNING_THRESHOLD);
     bool noFaults = (stateMachine.getActiveFaults() == FAULT_NONE);
+    bool allMet = tempValid && waterLevelOK && tempBelowWarning && noFaults;
     
     #ifdef ENABLE_SERIAL_DEBUG
-        if (!waterLevelOK || !tempBelowWarning || !noFaults) {
+        if (!allMet && lastHeaterPreconditionsMet) {
             Serial.println(F("[SAFETY] Heater preconditions NOT met:"));
+            if (!tempValid) Serial.println(F("  - Temperature sensor reading invalid"));
             if (!waterLevelOK) Serial.println(F("  - Water level insufficient"));
             if (!tempBelowWarning) {
                 Serial.print(F("  - Temperature above warning threshold ("));
-                Serial.print(sensorManager.getTemperature(), 1);
+                Serial.print(currentTemp, 1);
                 Serial.print(F(" >= "));
                 Serial.print(TEMP_WARNING_THRESHOLD, 1);
                 Serial.println(F(" °C)"));
@@ -141,10 +151,13 @@ bool SafetySystem::checkHeaterPreconditions() {
                 Serial.print(F("  - Active faults: 0x"));
                 Serial.println(stateMachine.getActiveFaults(), HEX);
             }
+        } else if (allMet && !lastHeaterPreconditionsMet) {
+            Serial.println(F("[SAFETY] Heater preconditions MET"));
         }
     #endif
     
-    return waterLevelOK && tempBelowWarning && noFaults;
+    lastHeaterPreconditionsMet = allMet;
+    return allMet;
 }
 
 bool SafetySystem::checkFeaturePreconditions() {
@@ -412,34 +425,72 @@ void SafetySystem::processHeaterAutoStart() {
 }
 
 void SafetySystem::processHeaterTemperatureControl() {
-    // Get current temperature and target
     float currentTemp = sensorManager.getTemperature();
     float targetTemp = getTargetTemperature();
     
-    // Deactivate heater if target reached or exceeded
     if (currentTemp >= targetTemp) {
-        deactivateHeater();
-        
+        // SP <= PV: target reached or exceeded - deactivate if active
+        if (heaterActive) {
+            deactivateHeater();
+
+            #ifdef ENABLE_SERIAL_DEBUG
+                Serial.println(F("[SAFETY] Heater deactivated - target temperature reached"));
+                Serial.print(F("  Current: "));
+                Serial.print(currentTemp, 1);
+                Serial.print(F(" °C, Target: "));
+                Serial.print(targetTemp, 1);
+                Serial.println(F(" °C"));
+            #endif
+        }
+    } else {
+        // SP > PV: below target - activate if inactive and preconditions met
+        if (!heaterActive && checkHeaterPreconditions()) {
+            activateHeater();
+
+            #ifdef ENABLE_SERIAL_DEBUG
+                Serial.println(F("[SAFETY] Heater activated - temperature below target"));
+                Serial.print(F("  Current: "));
+                Serial.print(currentTemp, 1);
+                Serial.print(F(" °C, Target: "));
+                Serial.print(targetTemp, 1);
+                Serial.println(F(" °C"));
+            #endif
+        }
+    }
+}
+
+void SafetySystem::activateHeater() {
+    // CRITICAL FIX: Check if current temperature is already at or above target
+    // This prevents momentary heater activation when setpoint < current temperature
+    float currentTemp = sensorManager.getTemperature();
+    float targetTemp = getTargetTemperature();
+    
+    if (currentTemp >= targetTemp) {
         #ifdef ENABLE_SERIAL_DEBUG
-            Serial.println(F("[SAFETY] Heater deactivated - target temperature reached"));
+            Serial.println(F("[SAFETY] Heater activation SKIPPED - temperature already at or above target"));
             Serial.print(F("  Current: "));
             Serial.print(currentTemp, 1);
             Serial.print(F(" °C, Target: "));
             Serial.print(targetTemp, 1);
             Serial.println(F(" °C"));
         #endif
+        
+        // Clear auto-start pending flag
+        heaterAutoStartPending = false;
+        return;
     }
-}
-
-void SafetySystem::activateHeater() {
+    
     if (relayController.setRelay(RELAY_CHANNEL_HEATER, true)) {
         heaterActive = true;
         heaterAutoStartPending = false;
         
         #ifdef ENABLE_SERIAL_DEBUG
             Serial.println(F("[SAFETY] Water heater STARTED"));
+            Serial.print(F("  Current temperature: "));
+            Serial.print(currentTemp, 1);
+            Serial.println(F(" °C"));
             Serial.print(F("  Target temperature: "));
-            Serial.print(getTargetTemperature(), 1);
+            Serial.print(targetTemp, 1);
             Serial.println(F(" °C"));
         #endif
     } else {
